@@ -1,5 +1,6 @@
 import asyncio
 import requests
+import json
 import nest_asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
@@ -46,17 +47,39 @@ def create_new_session():
     logging.info("Создание новой сессии.")
     return session
 
+# Преобразование cookies в нужный формат
+def parse_cookies(cookies_data):
+    cookies_dict = {}
+    
+    # Если переданы данные в формате JSON
+    if isinstance(cookies_data, list):
+        for cookie in cookies_data:
+            name = cookie.get("name")
+            value = cookie.get("value")
+            if name and value:
+                cookies_dict[name] = value
+    
+    # Если переданы данные в строковом формате
+    elif isinstance(cookies_data, str):
+        for cookie in cookies_data.split(';'):
+            if '=' in cookie:
+                key, value = cookie.strip().split('=', 1)
+                cookies_dict[key] = value
+    
+    return cookies_dict
+
 # Эмуляция сессии через cookies
 def start_session_with_cookies(update, context, cookies_str):
     session = create_new_session()
     context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
 
-    # Преобразуем строку cookies в словарь
-    cookies_dict = {}
-    for cookie in cookies_str.split(';'):
-        if '=' in cookie:
-            key, value = cookie.strip().split('=', 1)
-            cookies_dict[key] = value
+    try:
+        # Пробуем распарсить cookies как JSON
+        cookies_data = json.loads(cookies_str)
+        cookies_dict = parse_cookies(cookies_data)
+    except json.JSONDecodeError:
+        # Если не JSON, пробуем строку cookies
+        cookies_dict = parse_cookies(cookies_str)
     
     # Добавляем cookies в сессию
     session.cookies.update(cookies_dict)
@@ -78,8 +101,9 @@ def start_session_with_cookies(update, context, cookies_str):
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
-    await update.message.reply_text("Привет! Отправь свои cookies для авторизации в формате:\n"
-                                    "`cookie1=value1; cookie2=value2`")
+    await update.message.reply_text("Привет! Отправь свои cookies для авторизации в одном из следующих форматов:\n"
+                                    "1. JSON-массив объектов cookies\n"
+                                    "2. Строка cookies в формате: cookie1=value1; cookie2=value2")
     return COOKIES
 
 # Обработка получения cookies от пользователя
