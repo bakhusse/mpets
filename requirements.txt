@@ -1,0 +1,6 @@
+selenium
+python-telegram-bot
+pillow
+requests
+pytesseract
+schedule
