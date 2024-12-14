@@ -122,6 +122,17 @@ def start_session_with_cookies(update, context, cookies_str):
 
     return session, response
 
+# Функция для извлечения времени ожидания из текста
+def extract_wait_time(page_html):
+    # Ищем шаблон "Проснется через: 18м 55с"
+    match = re.search(r"Проснется через: (\d+)м (\d+)с", page_html)
+    if match:
+        minutes = int(match.group(1))
+        seconds = int(match.group(2))
+        total_seconds = minutes * 60 + seconds
+        return total_seconds
+    return None
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
