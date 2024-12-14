@@ -71,6 +71,22 @@ def parse_cookies(cookies_data):
     
     return cookies_dict
 
+# Функция для извлечения времени сна
+def extract_sleep_time(response_text):
+    """
+    Функция для извлечения времени сна из текста ответа страницы.
+    Предполагается, что на странице содержится информация о времени сна питомца.
+    """
+    # Пример: ищем строку с временем сна питомца (формат может отличаться)
+    match = re.search(r"Питомец спит, проснется через (\d+) ч (\d+) м", response_text)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        # Преобразуем время сна в секунды
+        total_seconds = (hours * 3600) + (minutes * 60)
+        return total_seconds
+    return None
+
 # Проверка на возможность действия (кормить, играть)
 def check_action_links(page_html):
     # Используем BeautifulSoup для парсинга HTML
