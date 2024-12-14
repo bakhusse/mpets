@@ -99,9 +99,11 @@ def check_action_links(page_html):
 
 # Проверка поляны
 def check_glade(page_html):
+    # Проверка на наличие шанса найти семена
     if "Шанс найти семена" in page_html:
         return True
     
+    # Если попытки кончились, найти время, когда можно будет снова попытаться
     match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", page_html)
     if match:
         hours = int(match.group(1))
@@ -112,6 +114,7 @@ def check_glade(page_html):
 
 # Проверка прогулки
 def check_travel(page_html):
+    # Проверка, гуляет ли питомец
     if "Ваш питомец гуляет" in page_html:
         match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", page_html)
         if match:
@@ -211,11 +214,9 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         logging.info("Проверка поляны.")
         glade_time = check_glade(response.text)
         if glade_time is not None:
-            await update.message.reply_text(f"Шанс найти семена не найден. Следующая попытка через {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
+            await update.message.reply_text(f"Шанс найти семена не найден, нужно подождать {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
             await asyncio.sleep(glade_time)
-            await update.message.reply_text("Попытка поиска семян снова.")
-        elif "Шанс найти семена" in response.text:
-            logging.info("Шанс найти семена найден, начинаем копать.")
+            await update.message.reply_text("Время ожидания прошло. Ищем семена на поляне.")
             for _ in range(6):
                 session.get(f"{base_url}/glade_dig")
             await update.message.reply_text("Вы нашли семена на поляне!")
@@ -234,7 +235,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
 
     return ConversationHandler.END
 
-
+# Основная функция для запуска бота
 def main():
     application = Application.builder().token(TOKEN).build()
 
