@@ -1,10 +1,12 @@
-import asyncio  # Добавляем импорт asyncio
 import requests
 from io import BytesIO
 from PIL import Image
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
+import asyncio
+import nest_asyncio
+import colorlog  # Для цветного логирования
 import re
 
 # Состояния для ConversationHandler
@@ -13,8 +15,24 @@ LOGIN, PASSWORD, CAPTCHA = range(3)
 # Ваш токен Telegram-бота
 TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
 
-# Настройка логирования
-logging.basicConfig(level=logging.DEBUG)
+# Настройка цветного логирования
+log_formatter = colorlog.ColoredFormatter(
+    '%(log_color)s[%(asctime)s] - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    log_colors={
+        'DEBUG': 'blue',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'bold_red',
+    }
+)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+logging.getLogger().addHandler(console_handler)
+logging.getLogger().setLevel(logging.DEBUG)
 
 # Функция для создания новой сессии
 def create_new_session():
@@ -48,7 +66,7 @@ def get_captcha(session):
 
 # Функция для авторизации с капчей
 def authorize(session, login, password, captcha_solution):
-    url = 'https://mpets.mobi/welcome'  # Здесь меняем на /welcome для авторизации
+    url = 'https://mpets.mobi/welcome'  # Используем правильный URL для авторизации
     data = {
         'login': login,
         'password': password,
@@ -68,29 +86,28 @@ def authorize(session, login, password, captcha_solution):
     if response.status_code == 200:
         if "Неверная captcha" in response.text:
             logging.error("Неверная капча.")
-            return "Неверная captcha"
+            return "Неверная captcha", None
         elif "Неправильное Имя или Пароль" in response.text:
             logging.error("Неправильное имя или пароль.")
-            return "Неправильное имя или пароль"
-        elif "error=" in response.url and "welcome" in response.url:
-            # Обрабатываем редирект с ошибкой авторизации
-            error_code = response.url.split('error=')[-1]
-            logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
-            return f"Ошибка авторизации, код ошибки: {error_code}"
+            return "Неправильное имя или пароль", None
+        elif "Oops! Your session is expired" in response.text:
+            # Если сессия истекла, перезапускаем процесс
+            logging.error("Сессия истекла. Перезапуск авторизации.")
+            return "Сессия истекла. Пожалуйста, начните с /start.", None
         elif "mpets.mobi" in response.url:
             # Если авторизация успешна, проверяем на редирект на главную страницу
             logging.info("Авторизация успешна! Переход на главную страницу.")
             return "success", response.text  # Возвращаем HTML-страницу
         else:
             logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
-            return "Неизвестная ошибка авторизации"
+            return "Неизвестная ошибка авторизации", None
     else:
         logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
-        return f"Ошибка при авторизации, статус: {response.status_code}"
+        return f"Ошибка при авторизации, статус: {response.status_code}", None
 
 # Функция для проверки наличия изображения на странице
 def check_image_on_page(page_html):
-    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt="">
+    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt=""/>
     image_pattern = r'<img class="price_img" src="/view/image/icons/coin.png" alt="">'
     match = re.search(image_pattern, page_html)
 
@@ -101,14 +118,35 @@ def check_image_on_page(page_html):
         logging.error("Изображение не найдено на странице.")
         return False
 
+# Эмуляция сессии через cookies и необходимые шаги
+def start_session(update, context):
+    session = create_new_session()
+    context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
+
+    # Выполняем запрос на страницу welcome и сохраняем cookies
+    welcome_url = "https://mpets.mobi/welcome"
+    logging.info(f"Запрос на страницу {welcome_url}")
+    response = session.get(welcome_url)
+    
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить страницу welcome. Статус: {response.status_code}")
+        return None
+    # Сохраняем cookies для дальнейших запросов
+    logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
+    
+    return session
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации.")
     
     # Создаем новую сессию сразу при старте
-    session = create_new_session()
-    context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
+    session = start_session(update, context)
     
+    if session is None:
+        await update.message.reply_text("Не удалось начать сессию. Попробуйте снова.")
+        return ConversationHandler.END
+
     await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
     return LOGIN
 
@@ -184,7 +222,7 @@ async def main():
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
             CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
         },
-        fallbacks=[]  # Убираем обработчик cancel
+        fallbacks=[]  # Убираем обработчик для cancel
     )
 
     application.add_handler(conversation_handler)
@@ -192,8 +230,9 @@ async def main():
     # Запуск бота
     await application.run_polling()
 
+# Настроим asyncio для работы в Google Colab
+nest_asyncio.apply()
+
 # Запуск бота
 if __name__ == '__main__':
-    import nest_asyncio
-    nest_asyncio.apply()
     asyncio.run(main())
