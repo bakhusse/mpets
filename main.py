@@ -59,6 +59,11 @@ def authorize(login, password, captcha_solution):
 
     logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
 
+    # Проверка на истекшую сессию
+    if "Your session is expired" in response.text:
+        logging.error("Сессия истекла, требуется повторная авторизация.")
+        return "Сессия истекла, пожалуйста, авторизуйтесь снова."
+
     # Проверка на ошибку авторизации
     if response.status_code == 200:
         # Проверка на ошибки капчи или логина/пароля
@@ -134,15 +139,9 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         context.user_data.clear()  # Очищаем данные (логин, пароль)
         await update.message.reply_text('Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
         return ConversationHandler.END
-    elif result == "Неверная captcha":
-        await update.message.reply_text('Ошибка: Неверная капча. Попробуйте снова.')
+    elif result == "Сессия истекла, пожалуйста, авторизуйтесь снова.":
+        await update.message.reply_text('Сессия истекла. Для начала нового процесса авторизации используйте команду /start.')
         context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text('Неверная капча. Для начала нового процесса авторизации используйте команду /start.')
-        return ConversationHandler.END
-    elif result == "Неправильное Имя или Пароль":
-        await update.message.reply_text('Ошибка: Неправильное имя или пароль. Попробуйте снова.')
-        context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text('Неправильное имя или пароль. Для начала нового процесса авторизации используйте команду /start.')
         return ConversationHandler.END
     else:
         await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
