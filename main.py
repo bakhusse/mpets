@@ -9,7 +9,7 @@ import logging
 LOGIN, PASSWORD, CAPTCHA = range(3)
 
 # Ваш токен Telegram-бота
-TOKEN = 'YOUR_BOT_TOKEN'
+TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
 
 # Инициализация сессии
 session = requests.Session()
@@ -21,32 +21,17 @@ def get_captcha():
     captcha_image = response.content
     return captcha_image
 
-# Функция для решения капчи с помощью 2Captcha или другого сервиса
-def solve_captcha(captcha_image):
-    # Используем сторонний сервис для решения капчи
-    # Это можно делать через API, например, 2Captcha
-    # Пример использования 2Captcha:
-    api_key = 'YOUR_2CAPTCHA_API_KEY'
-    captcha_id = request_captcha(api_key, captcha_image)  # Функция для отправки капчи на сервис
-    return solve_captcha_request(api_key, captcha_id)
+# Функция для авторизации с капчей
+def authorize(login, password, captcha_solution):
+    url = 'https://mpets.mobi/login'  # Примерный URL для авторизации
+    data = {
+        'login': login,
+        'password': password,
+        'captcha': captcha_solution
+    }
+    response = session.post(url, data=data)
 
-def request_captcha(api_key, captcha_image):
-    # Отправка капчи на сервер 2Captcha и получение ID задачи
-    url = f'http://2captcha.com/in.php?key={api_key}&method=userrecaptcha'
-    files = {'file': captcha_image}
-    response = requests.post(url, files=files)
-    captcha_id = response.text.split('|')[1]
-    return captcha_id
-
-def solve_captcha_request(api_key, captcha_id):
-    # Получение решения капчи
-    url = f'http://2captcha.com/res.php?key={api_key}&action=get&id={captcha_id}'
-    while True:
-        response = requests.get(url)
-        if 'OK' in response.text:
-            return response.text.split('|')[1]
-        else:
-            time.sleep(5)
+    return response
 
 # Обработка команды /start
 def start(update: Update, context: CallbackContext):
@@ -76,19 +61,14 @@ def password(update: Update, context: CallbackContext):
 
 # Обработка решения капчи
 def captcha(update: Update, context: CallbackContext):
-    captcha_solution = update.message.text
+    captcha_solution = update.message.text.strip()
 
-    # Отправляем решение на сайт и завершаем авторизацию
+    # Получаем логин и пароль из контекста
     login = context.user_data['login']
     password = context.user_data['password']
 
-    # Пример авторизации с капчей
-    data = {
-        'login': login,
-        'password': password,
-        'captcha': captcha_solution
-    }
-    response = session.post('https://mpets.mobi/login', data=data)
+    # Пытаемся авторизовать пользователя
+    response = authorize(login, password, captcha_solution)
 
     if response.ok and 'success' in response.text:  # Пример проверки успешной авторизации
         update.message.reply_text('Авторизация успешна!')
