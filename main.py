@@ -5,6 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import logging
 import colorlog  # Для цветного логирования
 import re
+import nest_asyncio  # Для работы с уже существующим циклом событий
 from PIL import Image  # Для работы с изображениями
 
 # Состояния для ConversationHandler
@@ -198,15 +199,15 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     result, page_html = authorize(session, login, password, captcha_solution)
 
     if result == "Неверная captcha":
-        await update.message.reply_text("Неверная капча, попробуйте снова.")
+        await update.message.reply_text(f"Капча неверная! Попробуй снова.")
         return CAPTCHA
 
     if result == "success":
         # Проверяем наличие изображения на странице
         if check_image_on_page(page_html):
-            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
+            await update.message.reply_text('Авторизация успешна! Изображение подтверждено.')
         else:
-            await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
+            await update.message.reply_text('Авторизация успешна, но изображение не найдено.')
         return ConversationHandler.END
     else:
         await update.message.reply_text(f"Ошибка: {result}. Попробуйте снова.")
@@ -214,6 +215,9 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 
 # Главная функция
 async def main():
+    # Используем nest_asyncio для обработки циклов событий в Jupyter/Colab
+    nest_asyncio.apply()
+
     application = Application.builder().token(TOKEN).build()
 
     conversation_handler = ConversationHandler(
@@ -232,5 +236,5 @@ async def main():
     await application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    # Запускаем уже существующий цикл событий
+    asyncio.get_event_loop().run_until_complete(main())
