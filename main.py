@@ -48,12 +48,16 @@ def authorize(login, password, captcha_solution):
 
     logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
 
-    # Анализируем текст ответа, чтобы различать ошибки
+    # Проверка на ошибку авторизации
     if response.status_code == 200:
         if "Неверная captcha" in response.text:
             return "Неверная captcha"
         elif "Неправильное Имя или Пароль" in response.text:
             return "Неправильное имя или пароль"
+        elif "error=" in response.url:  # Проверяем, если URL содержит ошибку
+            error_code = response.url.split('error=')[-1]
+            logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
+            return f"Ошибка авторизации, код ошибки: {error_code}"
         else:
             return "success"
     else:
@@ -134,9 +138,12 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         visit_links()
 
         await update.message.reply_text('Переходы по ссылкам завершены.')
+    elif "Ошибка авторизации" in result:  # Если ошибка авторизации
+        await update.message.reply_text(f'{result}. Попробуйте снова.')
+        return LOGIN  # Попросить ввести логин снова
     elif result == "Неверная captcha":
         await update.message.reply_text('Ошибка: Неверная капча. Попробуйте снова.')
-        return LOGIN  # Попросить ввести логин снова (переход к первому шагу)
+        return LOGIN  # Попросить ввести логин снова
     elif result == "Неправильное Имя или Пароль":
         await update.message.reply_text('Ошибка: Неправильное имя или пароль. Попробуйте снова.')
         return LOGIN  # Попросить ввести логин снова
