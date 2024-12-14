@@ -225,16 +225,23 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         if check_travel_complete(response.text):
             await update.message.reply_text("Прогулка завершена!")
         else:
+            # Извлекаем оставшееся время
             travel_time = extract_travel_time(response.text)
             if travel_time:
                 await update.message.reply_text(f"До конца прогулки осталось {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
                 await asyncio.sleep(travel_time)
                 await update.message.reply_text("Прогулка завершена!")
-    
-    # Проверка на наличие семян на поляне
-    response = session.get("https://mpets.mobi/glade")  # Переходим на полянку для поиска семян
+
+    # Выполняем прогулку, если еще не завершена
+    await update.message.reply_text("Отправляем питомца гулять!")
+    for duration in range(10, 0, -1):
+        session.get(f"https://mpets.mobi/go_travel?id={duration}")
+        await asyncio.sleep(1)  # Пауза между переходами для уменьшения нагрузки
+
+    # Проверка полянки для поиска семян
+    logging.info("Проверка полянки для поиска семян.")
+    response = session.get("https://mpets.mobi/glade")
     if check_seeds_found(response.text):
-        logging.info("Шанс найти семена найден!")
         for _ in range(6):
             session.get("https://mpets.mobi/glade_dig")
         await update.message.reply_text("Семена найдены!")
