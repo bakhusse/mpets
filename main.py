@@ -50,7 +50,7 @@ def authorize(login, password, captcha_solution):
 
     # Проверка на ошибку авторизации
     if response.status_code == 200:
-        # Проверяем, если редирект идет на страницу ошибки
+        # Если URL после редиректа содержит ошибку
         if "error=" in response.url and "welcome" in response.url:
             error_code = response.url.split('error=')[-1]
             logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
