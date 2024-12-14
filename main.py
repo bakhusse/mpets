@@ -10,6 +10,7 @@ import os
 import re
 import time
 import random
+from bs4 import BeautifulSoup
 
 # Для работы с циклом событий внутри Google Colab
 nest_asyncio.apply()
@@ -73,25 +74,25 @@ def parse_cookies(cookies_data):
 
 # Проверка на возможность действия (кормить, играть)
 def check_action_links(page_html):
-    actions = {
-        "food": r'<a href="/\?action=food&amp;rand=\d+" class="abtn">',
-        "play": r'<a href="/\?action=play&amp;rand=\d+" class="abtn">'
+    # Используем BeautifulSoup для парсинга HTML
+    soup = BeautifulSoup(page_html, 'html.parser')
+
+    # Ищем ссылки для кормления и игры
+    food_link = soup.find('a', href=re.compile(r'/?action=food&rand=\d+'))
+    play_link = soup.find('a', href=re.compile(r'/?action=play&rand=\d+'))
+
+    action_found = {
+        "food": bool(food_link),
+        "play": bool(play_link)
     }
     
-    action_found = {}
-    
-    # Проверка на наличие картинок с гиперссылками
-    for action, link_pattern in actions.items():
-        match = re.search(link_pattern, page_html)
-        action_found[action] = bool(match)
-    
-    # Добавим уведомление, если не нашли действия
+    # Логируем результаты
     if not action_found["food"]:
         logging.warning("Не найдено действие для кормления.")
     if not action_found["play"]:
         logging.warning("Не найдено действие для игры.")
     
-    return action_found
+    return action_found, food_link, play_link
 
 # Эмуляция сессии через cookies
 def start_session_with_cookies(update, context, cookies_str):
@@ -165,7 +166,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         return COOKIES
 
     # Перед авторизацией проверяем возможность действий (кормление, игра)
-    action_found = check_action_links(response.text)
+    action_found, food_link, play_link = check_action_links(response.text)
     logging.info(f"Доступные действия: {action_found}")
     
     # Проверка возможности покормить питомца
