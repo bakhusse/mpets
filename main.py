@@ -8,9 +8,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-from telegram import Bot, Update
-from telegram.ext import CommandHandler, MessageHandler, Filters, Updater, ConversationHandler, CallbackContext
-import schedule
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 
 # Конфигурация
 TELEGRAM_TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'  # Ваш токен
@@ -73,32 +72,32 @@ def check_page_for_image(driver):
         return False
 
 # Получение логина пользователя
-def start(update, context):
-    update.message.reply_text('Привет! Пожалуйста, введи свой логин.')
+async def start(update: Update, context: CallbackContext):
+    await update.message.reply_text('Привет! Пожалуйста, введи свой логин.')
     return LOGIN
 
 # Получение пароля пользователя
-def get_login(update, context):
+async def get_login(update: Update, context: CallbackContext):
     context.user_data['login'] = update.message.text
-    update.message.reply_text('Теперь введи свой пароль.')
+    await update.message.reply_text('Теперь введи свой пароль.')
     return PASSWORD
 
 # Получение капчи от пользователя
-def get_password(update, context):
+async def get_password(update: Update, context: CallbackContext):
     context.user_data['password'] = update.message.text
-    update.message.reply_text('Я получил пароль. Я отправлю тебе капчу, пожалуйста, реши её и введи текст.')
+    await update.message.reply_text('Я получил пароль. Я отправлю тебе капчу, пожалуйста, реши её и введи текст.')
     
     # Запускаем Selenium драйвер
     driver = get_driver()
 
     # Получаем капчу с сайта и отправляем пользователю
     captcha_image = get_captcha_image(driver)
-    update.message.reply_photo(photo=captcha_image)
+    await update.message.reply_photo(photo=captcha_image)
     
     return CAPTCHA
 
 # Обработка решения капчи
-def get_captcha(update, context):
+async def get_captcha(update: Update, context: CallbackContext):
     captcha_solution = update.message.text
     login = context.user_data['login']
     password = context.user_data['password']
@@ -110,7 +109,7 @@ def get_captcha(update, context):
     # Проверка наличия картинки
     if check_page_for_image(driver):
         logger.info("\033[92m[INFO] Картинка найдена на странице\033[0m")
-        update.message.reply_text('Картинка найдена на странице! Теперь нажмем кнопки...')
+        await update.message.reply_text('Картинка найдена на странице! Теперь нажмем кнопки...')
         
         # Логика нажатия кнопок (пример: нажимаем все кнопки на странице)
         buttons = driver.find_elements(By.XPATH, '//button')
@@ -118,9 +117,9 @@ def get_captcha(update, context):
             button.click()
             time.sleep(1)  # Пауза между нажатием кнопок
         
-        update.message.reply_text('Кнопки нажаты успешно!')
+        await update.message.reply_text('Кнопки нажаты успешно!')
     else:
-        update.message.reply_text('Картинка не найдена на странице.')
+        await update.message.reply_text('Картинка не найдена на странице.')
         logger.error("\033[91m[ERROR] Картинка не найдена на странице\033[0m")
 
     # Закрытие браузера
@@ -129,32 +128,31 @@ def get_captcha(update, context):
     return ConversationHandler.END
 
 # Завершение диалога
-def cancel(update, context):
-    update.message.reply_text('Операция отменена.')
+async def cancel(update: Update, context: CallbackContext):
+    await update.message.reply_text('Операция отменена.')
     return ConversationHandler.END
 
 # Настройка Telegram бота
-def main():
+async def main():
     # Настройка бота
-    updater = Updater(TELEGRAM_TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Обработчики команд
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            LOGIN: [MessageHandler(Filters.text & ~Filters.command, get_login)],
-            PASSWORD: [MessageHandler(Filters.text & ~Filters.command, get_password)],
-            CAPTCHA: [MessageHandler(Filters.text & ~Filters.command, get_captcha)],
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_captcha)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
-    dispatcher.add_handler(conversation_handler)
+    application.add_handler(conversation_handler)
 
     # Запуск бота
-    updater.start_polling()
-    updater.idle()
+    await application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())
