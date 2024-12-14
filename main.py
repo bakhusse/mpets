@@ -1,7 +1,6 @@
 import requests
 from io import BytesIO
 from PIL import Image
-import pytesseract
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
@@ -60,19 +59,9 @@ def get_captcha(session):
         img_byte_arr = BytesIO()
         image.save(img_byte_arr, format='PNG')  # Сохраняем в PNG
         img_byte_arr.seek(0)  # Возвращаем указатель в начало
-        return img_byte_arr, image  # Возвращаем и сам байтовый массив, и изображение для OCR
+        return img_byte_arr
     except Exception as e:
         logging.error(f"Не удалось обработать капчу: {e}")
-        return None
-
-# Функция для распознавания текста капчи
-def solve_captcha(image):
-    try:
-        captcha_text = pytesseract.image_to_string(image, config='--psm 6').strip()
-        logging.info(f"Распознанная капча: {captcha_text}")
-        return captcha_text
-    except Exception as e:
-        logging.error(f"Ошибка при распознавании капчи: {e}")
         return None
 
 # Функция для авторизации с капчей
@@ -91,7 +80,8 @@ def authorize(session, login, password, captcha_solution):
     logging.info(f"Отправка запроса на авторизацию с данными: {data}")
     response = session.post(url, data=data, headers=headers)
 
-    logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
+    # Логирование полного ответа на запрос
+    logging.debug(f"Ответ на запрос авторизации:\n{response.text}")  # Печать всего текста ответа
 
     # Проверка на ошибку авторизации
     if response.status_code == 200:
@@ -110,11 +100,24 @@ def authorize(session, login, password, captcha_solution):
             logging.info("Авторизация успешна! Переход на главную страницу.")
             return "success", response.text  # Возвращаем HTML-страницу
         else:
-            logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
+            logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text}")
             return "Неизвестная ошибка авторизации", None
     else:
         logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
         return f"Ошибка при авторизации, статус: {response.status_code}", None
+
+# Функция для проверки наличия изображения на странице
+def check_image_on_page(page_html):
+    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt=""/>
+    image_pattern = r'<img class="price_img" src="/view/image/icons/coin.png" alt="">'
+    match = re.search(image_pattern, page_html)
+
+    if match:
+        logging.info("Изображение найдено на странице.")
+        return True
+    else:
+        logging.error("Изображение не найдено на странице.")
+        return False
 
 # Эмуляция сессии через cookies и необходимые шаги
 def start_session(update, context):
@@ -166,17 +169,11 @@ async def password(update: Update, context: CallbackContext) -> int:
     session = context.user_data['session']
 
     # Отправляем запрос на сайт для получения капчи
-    captcha_image, image = get_captcha(session)
+    captcha_image = get_captcha(session)
 
     if captcha_image is None:
         await update.message.reply_text("Не удалось получить капчу. Попробуйте позже.")
         return ConversationHandler.END
-
-    # Пробуем распознать капчу с помощью OCR
-    captcha_solution = solve_captcha(image)
-    if captcha_solution:
-        logging.info(f"Распознанная капча: {captcha_solution}")
-        await update.message.reply_text(f"Решение капчи: {captcha_solution}")
 
     # Отправляем капчу пользователю
     await update.message.reply_text('Реши капчу:')
@@ -201,7 +198,14 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 
     # Обработка различных типов ошибок
     if result == "success":
-        await update.message.reply_text(f"Авторизация успешна: {result}")
+        # Проверяем наличие изображения на странице
+        if check_image_on_page(page_html):
+            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
+        else:
+            await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
+        return ConversationHandler.END
+    elif "Ошибка авторизации" in result:  # Если ошибка авторизации
+        await update.message.reply_text(result)
         return ConversationHandler.END
     else:
         await update.message.reply_text(f"Ошибка: {result}. Попробуйте снова.")
@@ -209,6 +213,7 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 
 # Главная функция
 async def main():
+    # Используем nest_asyncio для обработки циклов событий в Jupyter
     nest_asyncio.apply()
 
     application = Application.builder().token(TOKEN).build()
