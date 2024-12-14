@@ -142,6 +142,11 @@ def check_travel(session):
             total_seconds = (hours * 60 * 60) + (minutes * 60)
             logging.info(f"Питомец гуляет. Ожидайте {hours}ч {minutes}м.")
             return total_seconds
+        else:
+            logging.info("Текст о времени прогулки не найден.")
+    else:
+        logging.info("Питомец не гуляет.")
+    
     return None
 
 # Эмуляция сессии через cookies
@@ -215,6 +220,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         
         # Используем полный URL для перехода
         base_url = "https://mpets.mobi"
+        
         if action_found["food"]:
             logging.info("Переход по ссылке кормления.")
             for _ in range(6):
