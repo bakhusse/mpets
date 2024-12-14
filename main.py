@@ -6,6 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import logging
 import asyncio
 import nest_asyncio
+import colorlog  # Импортируем библиотеку для цветного логирования
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -13,8 +14,24 @@ LOGIN, PASSWORD, CAPTCHA = range(3)
 # Ваш токен Telegram-бота
 TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
 
-# Логирование для отладки
-logging.basicConfig(level=logging.DEBUG)
+# Настройка цветного логирования
+log_formatter = colorlog.ColoredFormatter(
+    '%(log_color)s[%(asctime)s] - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    log_colors={
+        'DEBUG': 'blue',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'bold_red',
+    }
+)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+logging.getLogger().addHandler(console_handler)
+logging.getLogger().setLevel(logging.DEBUG)
 
 # Функция для создания новой сессии
 def create_new_session():
@@ -24,6 +41,7 @@ def create_new_session():
 # Функция для получения капчи с сайта
 def get_captcha(session):
     url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
+    logging.info(f"Отправка запроса на получение капчи: {url}")
     response = session.get(url)
     
     if response.status_code != 200:
@@ -57,6 +75,7 @@ def authorize(session, login, password, captcha_solution):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
     
+    logging.info(f"Отправка запроса на авторизацию с данными: {data}")
     response = session.post(url, data=data, headers=headers, allow_redirects=True)
 
     logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
@@ -77,9 +96,10 @@ def authorize(session, login, password, captcha_solution):
         else:
             # Проверяем, если редирект на главную страницу после успешной авторизации
             if "welcome" in response.url:
+                logging.info("Авторизация успешна!")
                 return "success"
             else:
-                logging.error("Неизвестная ошибка авторизации.")
+                logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
                 return "Неизвестная ошибка авторизации"
     else:
         logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
@@ -140,47 +160,4 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text(f'{result}. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные (логин, пароль)
         await update.message.reply_text('Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
-        return ConversationHandler.END
-    elif result == "Неверная captcha":
-        await update.message.reply_text('Неверная captcha. Попробуйте снова.')
-        context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text('Ошибка капчи. Для начала нового процесса авторизации используйте команду /start.')
-        return ConversationHandler.END
-    else:
-        await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
-        context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text(f'Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
-        return ConversationHandler.END
-
-# Функция завершения
-async def cancel(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text('Авторизация отменена.')
-    return ConversationHandler.END
-
-# Основная асинхронная функция для запуска бота
-async def main():
-    # Создаем и запускаем бота
-    application = Application.builder().token(TOKEN).build()
-
-    # Определяем ConversationHandler для обработки пошаговой авторизации
-    conversation_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
-            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
-            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
-
-    application.add_handler(conversation_handler)
-
-    # Запускаем бота
-    await application.run_polling()
-
-# Запускаем бота через await в Google Colab
-if __name__ == "__main__":
-    nest_asyncio.apply()  # Это позволяет запускать асинхронный код в уже существующем цикле событий
-
-    # Теперь запускаем бота
-    asyncio.get_event_loop().run_until_complete(main())
+      
