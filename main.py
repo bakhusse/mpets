@@ -124,10 +124,18 @@ def check_glade(session):
     return None
 
 # Проверка прогулки
-def check_travel(page_html):
+def check_travel(session):
+    url = "https://mpets.mobi/travel"
+    logging.info(f"Проверка прогулки по ссылке: {url}")
+    response = session.get(url)
+    
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить страницу прогулки. Статус: {response.status_code}")
+        return None
+    
     # Проверка, гуляет ли питомец
-    if "Ваш питомец гуляет" in page_html:
-        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", page_html)
+    if "Ваш питомец гуляет" in response.text:
+        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
         if match:
             hours = int(match.group(1))
             minutes = int(match.group(2))
@@ -205,23 +213,22 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         logging.info("Питомец не спит. Проверяем возможность кормления и игры.")
         action_found, food_link, play_link = check_action_links(response.text)
         
-        # Используем полный URL для перехода по ссылкам
+        # Используем полный URL для перехода
         base_url = "https://mpets.mobi"
-        
         if action_found["food"]:
             logging.info("Переход по ссылке кормления.")
-            for _ in range(6):  # Переход по ссылке кормления 6 раз
+            for _ in range(6):
                 food_url = base_url + food_link["href"]
                 session.get(food_url)
-            await update.message.reply_text("Питомец покормлен.")
-        
+            await update.message.reply_text("Питомец поел.")
+
         if action_found["play"]:
             logging.info("Переход по ссылке игры.")
-            for _ in range(6):  # Переход по ссылке игры 6 раз
+            for _ in range(6):
                 play_url = base_url + play_link["href"]
                 session.get(play_url)
             await update.message.reply_text("Питомец поиграл.")
-    
+
     # Проверка поляны
     glade_check = check_glade(session)
     if glade_check is True:
@@ -239,7 +246,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
 
     # Проверка прогулки
     logging.info("Проверка прогулки.")
-    travel_time = check_travel(response.text)
+    travel_time = check_travel(session)
     if travel_time:
         await update.message.reply_text(f"Питомец гуляет. Ожидайте {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
         await asyncio.sleep(travel_time)
