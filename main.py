@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
 import asyncio
+import nest_asyncio
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -14,11 +15,20 @@ TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
 # Инициализация сессии
 session = requests.Session()
 
+# Логирование для отладки
+logging.basicConfig(level=logging.DEBUG)
+
 # Функция для получения капчи с сайта
 def get_captcha():
     url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
     response = session.get(url)
+    
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить капчу. Статус: {response.status_code}")
+        return None
+    
     captcha_image = response.content
+    logging.info(f"Капча получена, размер: {len(captcha_image)} байт")
     return captcha_image
 
 # Функция для авторизации с капчей
@@ -29,7 +39,14 @@ def authorize(login, password, captcha_solution):
         'password': password,
         'captcha': captcha_solution
     }
-    response = session.post(url, data=data)
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    response = session.post(url, data=data, headers=headers)
+
+    logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
 
     return response
 
@@ -53,6 +70,10 @@ async def password(update: Update, context: CallbackContext) -> int:
     # Отправляем запрос на сайт для получения капчи
     captcha_image = get_captcha()
 
+    if captcha_image is None:
+        await update.message.reply_text("Не удалось получить капчу. Попробуйте позже.")
+        return ConversationHandler.END
+
     # Отправляем капчу пользователю
     await update.message.reply_text('Реши капчу:')
     await update.message.reply_photo(photo=BytesIO(captcha_image))
@@ -73,7 +94,7 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     if response.ok and 'success' in response.text:  # Пример проверки успешной авторизации
         await update.message.reply_text('Авторизация успешна!')
     else:
-        await update.message.reply_text('Ошибка авторизации. Попробуй снова.')
+        await update.message.reply_text(f'Ошибка авторизации: {response.status_code}. Попробуй снова.')
 
     return ConversationHandler.END
 
@@ -91,22 +112,4 @@ async def main():
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
-            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
-            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-    )
-
-    application.add_handler(conversation_handler)
-
-    # Запускаем бота
-    await application.run_polling()
-
-# Запускаем бота через await в Google Colab
-if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()  # Это позволяет запускать асинхронный код в уже существующем цикле событий
-
-    # Теперь запускаем бота
-    asyncio.get_event_loop().run_until_complete(main())
+            LOGIN: [MessageHandler(filters.TEXT & ~filters
