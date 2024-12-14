@@ -1,3 +1,4 @@
+import asyncio  # Добавлен импорт asyncio
 import requests
 from io import BytesIO
 from telegram import Update
