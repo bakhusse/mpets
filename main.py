@@ -9,7 +9,6 @@ import colorlog
 import os
 import re
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin
 
 # Для работы с циклом событий внутри Google Colab
 nest_asyncio.apply()
@@ -60,7 +59,6 @@ def parse_cookies(cookies_data):
             value = cookie.get("value")
             if name and value:
                 cookies_dict[name] = value
-    
     elif isinstance(cookies_data, str):
         for cookie in cookies_data.split(';'):
             if '=' in cookie:
@@ -69,9 +67,26 @@ def parse_cookies(cookies_data):
     
     return cookies_dict
 
+# Функция для извлечения времени сна питомца
+def extract_sleep_time(page_html):
+    """
+    Функция для извлечения времени сна питомца с HTML страницы.
+    Если питомец спит, возвращает время в секундах.
+    Если питомец не спит, возвращает None.
+    """
+    match = re.search(r"Ваш питомец спит и проснется через (\d+)ч (\d+)м", page_html)
+    
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        return (hours * 3600) + (minutes * 60)
+    
+    return None
+
 # Проверка на возможность действия (кормить, играть)
 def check_action_links(page_html):
     soup = BeautifulSoup(page_html, 'html.parser')
+
     food_link = soup.find('a', href=re.compile(r'/?action=food&rand=\d+'))
     play_link = soup.find('a', href=re.compile(r'/?action=play&rand=\d+'))
 
@@ -80,29 +95,18 @@ def check_action_links(page_html):
         "play": bool(play_link)
     }
     
-    if not action_found["food"]:
-        logging.warning("Не найдено действие для кормления.")
-    if not action_found["play"]:
-        logging.warning("Не найдено действие для игры.")
-    
-    # Если ссылки найдены, делаем их абсолютными
-    if food_link:
-        food_link['href'] = urljoin("https://mpets.mobi", food_link['href'])
-    if play_link:
-        play_link['href'] = urljoin("https://mpets.mobi", play_link['href'])
-
     return action_found, food_link, play_link
 
 # Проверка поляны
 def check_glade(page_html):
     if "Шанс найти семена" in page_html:
         return True
+    
     match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", page_html)
     if match:
         hours = int(match.group(1))
         minutes = int(match.group(2))
         total_seconds = (hours * 60 * 60) + (minutes * 60)
-        logging.info(f"Время до следующей попытки поляны: {total_seconds} секунд.")
         return total_seconds
     return None
 
@@ -113,8 +117,7 @@ def check_travel(page_html):
         if match:
             hours = int(match.group(1))
             minutes = int(match.group(2))
-            total_seconds = (hours * 3600) + (minutes * 60)
-            logging.info(f"Оставшееся время прогулки: {total_seconds} секунд.")
+            total_seconds = (hours * 60 * 60) + (minutes * 60)
             return total_seconds
     return None
 
@@ -145,6 +148,7 @@ def start_session_with_cookies(update, context, cookies_str):
         return None
     
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
+
     return session, response
 
 # Обработка команды /start
@@ -165,7 +169,6 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Ошибка: Пожалуйста, отправьте cookies в правильном формате.")
         return COOKIES
 
-    # Создаем сессию с переданными cookies
     session, response = start_session_with_cookies(update, context, cookies_str)
     
     if session is None:
@@ -228,15 +231,16 @@ async def cookies(update: Update, context: CallbackContext) -> int:
 def main():
     application = Application.builder().token(TOKEN).build()
     
-    # Добавляем обработчики
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
-        states={COOKIES: [MessageHandler(filters.TEXT, cookies)]},
+        states={
+            COOKIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, cookies)],
+        },
         fallbacks=[],
     )
 
     application.add_handler(conv_handler)
     application.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
