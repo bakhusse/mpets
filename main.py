@@ -150,9 +150,11 @@ async def main():
 
     application.add_handler(conversation_handler)
 
-    # Запуск бота
+    # Запуск бота без использования asyncio.run()
     await application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
+    # Если вы работаете в Jupyter или Colab, запускать через asyncio.run() не нужно
+    import nest_asyncio
+    nest_asyncio.apply()  # Применяем patch для работы с уже работающим циклом
     asyncio.run(main())
