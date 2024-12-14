@@ -1,6 +1,6 @@
+import pyautogui
 import requests
 from io import BytesIO
-from PIL import Image
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
@@ -137,6 +137,19 @@ def start_session(update, context):
 
     return session
 
+# Функция для создания скриншота
+def take_screenshot(filename="screenshot.png"):
+    screenshot = pyautogui.screenshot()  # Делаем скриншот
+    screenshot.save(filename)  # Сохраняем скриншот как файл
+    logging.info(f"Скриншот сохранен как {filename}")
+    return filename
+
+# Функция для отправки скриншота в Telegram
+async def send_screenshot(update: Update, context: CallbackContext, screenshot_filename):
+    with open(screenshot_filename, "rb") as file:
+        await update.message.reply_photo(photo=file)
+    logging.info("Скриншот отправлен в Telegram.")
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации.")
@@ -196,6 +209,11 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     # Пытаемся авторизовать пользователя
     result, page_html = authorize(session, login, password, captcha_solution)
 
+    # Если капча неверная, делаем скриншот
+    if result == "Неверная captcha":
+        screenshot_filename = take_screenshot("captcha_error.png")
+        await send_screenshot(update, context, screenshot_filename)
+    
     # Обработка различных типов ошибок
     if result == "success":
         # Проверяем наличие изображения на странице
