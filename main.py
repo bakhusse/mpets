@@ -128,10 +128,10 @@ def start_session_with_cookies(update, context, cookies_str):
 
     return session, response
 
-# Функция для извлечения времени прогулки
-def extract_travel_time(page_html):
-    # Ищем шаблон "До конца прогулки осталось 6ч 10м"
-    match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", page_html)
+# Функция для извлечения времени сна питомца
+def extract_sleep_time(page_html):
+    # Ищем шаблон "Питомец устал и уснул. Проснется через: 1ч 52м"
+    match = re.search(r"Питомец устал и уснул\. Проснется через: (\d+)ч (\d+)м", page_html)
     if match:
         hours = int(match.group(1))
         minutes = int(match.group(2))
@@ -151,6 +151,17 @@ def check_seeds_found(page_html):
     if "Шанс найти семена" in page_html:
         return True
     return False
+
+# Проверка на завершение попыток на поляне и извлечение времени
+def extract_glade_time(page_html):
+    # Ищем текст о завершении попыток
+    match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", page_html)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        total_seconds = (hours * 60 * 60) + (minutes * 60)
+        return total_seconds
+    return None
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -177,11 +188,21 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
         return COOKIES
 
-    # Перед авторизацией проверяем возможность действий (кормление, игра)
-    action_found, food_link, play_link = check_action_links(response.text)
-    logging.info(f"Доступные действия: {action_found}")
+    # Проверяем, спит ли питомец
+    logging.info("Проверка состояния сна питомца.")
+    sleep_time = extract_sleep_time(response.text)
     
-    # Проверка возможности покормить питомца
+    if sleep_time:
+        logging.info(f"Питомец спит, проснется через {sleep_time // 3600}ч {(sleep_time % 3600) // 60}м.")
+        await update.message.reply_text(f"Питомец спит. Проснется через {sleep_time // 3600}ч {(sleep_time % 3600) // 60}м.")
+        
+        # Устанавливаем таймер
+        await asyncio.sleep(sleep_time)
+        await update.message.reply_text("Питомец проснулся!")
+    
+    # После того как питомец просыпается, выполняем действия с едой, игрой и выставкой
+    action_found, food_link, play_link = check_action_links(response.text)
+    
     if action_found["food"]:
         logging.info("Можно покормить питомца, переходим по ссылке.")
         # Генерируем случайное значение для rand и переходим по ссылке
@@ -191,9 +212,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
             rand_food = random.randint(1000, 9999)
             session.get(f"https://mpets.mobi/?action=food&rand={rand_food}")
         await update.message.reply_text("Питомец покормлен!")
-    else:
-        await update.message.reply_text("Действие для кормления не найдено.")
-    
+
     # Проверка возможности поиграть с питомцем
     if action_found["play"]:
         logging.info("Можно поиграть с питомцем, переходим по ссылке.")
@@ -204,47 +223,17 @@ async def cookies(update: Update, context: CallbackContext) -> int:
             rand_play = random.randint(1000, 9999)
             session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
         await update.message.reply_text("Питомец поиграл!")
-    else:
-        await update.message.reply_text("Действие для игры не найдено.")
     
-    # Переход по ссылке выставки 6 раз
-    logging.info("Переход по ссылке выставки.")
+    # Выполнение действий по выставке (6 раз)
+    logging.info("Переход по ссылке для выставки.")
     for _ in range(6):
         session.get("https://mpets.mobi/show")
+    await update.message.reply_text("Выставка завершена!")
+
+    # Переход по ссылке для пробуждения питомца (один раз)
+    session.get("https://mpets.mobi/wakeup")
     
-    await update.message.reply_text("Выставка посещена!")
-
-    # После проверок проверка на прогулку
-    logging.info("Проверка состояния прогулки питомца.")
-    
-    # Выполняем запрос к странице с информацией о прогулке
-    response = session.get("https://mpets.mobi/travel")  # Выполняем запрос для получения времени прогулки
-
-    # Проверяем, что прогулка активна
-    if response.status_code == 200:
-        if check_travel_complete(response.text):
-            await update.message.reply_text("Прогулка завершена!")
-        else:
-            # Извлекаем оставшееся время
-            travel_time = extract_travel_time(response.text)
-            if travel_time:
-                await update.message.reply_text(f"До конца прогулки осталось {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
-                await asyncio.sleep(travel_time)
-                await update.message.reply_text("Прогулка завершена!")
-
-    # Выполняем прогулку, если еще не завершена
-    await update.message.reply_text("Отправляем питомца гулять!")
-    for duration in range(10, 0, -1):
-        session.get(f"https://mpets.mobi/go_travel?id={duration}")
-        await asyncio.sleep(1)  # Пауза между переходами для уменьшения нагрузки
-
-    # Проверка полянки для поиска семян
-    logging.info("Проверка полянки для поиска семян.")
-    response = session.get("https://mpets.mobi/glade")
-    if check_seeds_found(response.text):
-        for _ in range(6):
-            session.get("https://mpets.mobi/glade_dig")
-        await update.message.reply_text("Семена найдены!")
+    await update.message.reply_text("Питомец проснулся после всех действий.")
 
     return START
 
