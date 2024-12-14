@@ -8,7 +8,6 @@ import logging
 import colorlog
 import os
 import re
-import random
 from bs4 import BeautifulSoup
 
 # Для работы с циклом событий внутри Google Colab
@@ -71,28 +70,9 @@ def parse_cookies(cookies_data):
     
     return cookies_dict
 
-# Функция для извлечения времени сна
-def extract_sleep_time(response_text):
-    """
-    Функция для извлечения времени сна из текста ответа страницы.
-    Предполагается, что на странице содержится информация о времени сна питомца.
-    """
-    # Пример: ищем строку с временем сна питомца (формат может отличаться)
-    match = re.search(r"Питомец спит, проснется через (\d+) ч (\d+) м", response_text)
-    if match:
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        # Преобразуем время сна в секунды
-        total_seconds = (hours * 3600) + (minutes * 60)
-        return total_seconds
-    return None
-
 # Проверка на возможность действия (кормить, играть)
 def check_action_links(page_html):
-    # Используем BeautifulSoup для парсинга HTML
     soup = BeautifulSoup(page_html, 'html.parser')
-
-    # Ищем ссылки для кормления и игры
     food_link = soup.find('a', href=re.compile(r'/?action=food&rand=\d+'))
     play_link = soup.find('a', href=re.compile(r'/?action=play&rand=\d+'))
 
@@ -101,7 +81,6 @@ def check_action_links(page_html):
         "play": bool(play_link)
     }
     
-    # Логируем результаты
     if not action_found["food"]:
         logging.warning("Не найдено действие для кормления.")
     if not action_found["play"]:
@@ -113,12 +92,12 @@ def check_action_links(page_html):
 def check_glade(page_html):
     if "Шанс найти семена" in page_html:
         return True
-    # Ищем текст с информацией о времени для следующей попытки
     match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", page_html)
     if match:
         hours = int(match.group(1))
         minutes = int(match.group(2))
         total_seconds = (hours * 60 * 60) + (minutes * 60)
+        logging.info(f"Время до следующей попытки поляны: {total_seconds} секунд.")
         return total_seconds
     return None
 
@@ -129,7 +108,8 @@ def check_travel(page_html):
         if match:
             hours = int(match.group(1))
             minutes = int(match.group(2))
-            total_seconds = (hours * 60 * 60) + (minutes * 60)
+            total_seconds = (hours * 3600) + (minutes * 60)
+            logging.info(f"Оставшееся время прогулки: {total_seconds} секунд.")
             return total_seconds
     return None
 
@@ -139,23 +119,18 @@ def start_session_with_cookies(update, context, cookies_str):
     context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
 
     try:
-        # Пробуем распарсить cookies как JSON
         cookies_data = json.loads(cookies_str)
         cookies_dict = parse_cookies(cookies_data)
     except json.JSONDecodeError:
-        # Если не JSON, пробуем строку cookies
         cookies_dict = parse_cookies(cookies_str)
     
-    # Если cookies пустые, возвращаем ошибку
     if not cookies_dict:
         logging.error("Ошибка: cookies пустые или некорректные.")
         return None
     
-    # Добавляем cookies в сессию
     session.cookies.update(cookies_dict)
     logging.info(f"Сессия с cookies: {session.cookies.get_dict()}")
 
-    # Примерный URL для проверки авторизации
     welcome_url = "https://mpets.mobi/welcome"
     logging.info(f"Запрос на страницу {welcome_url}")
     response = session.get(welcome_url)
@@ -165,8 +140,19 @@ def start_session_with_cookies(update, context, cookies_str):
         return None
     
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
-
     return session, response
+
+# Функция для извлечения времени сна питомца
+def extract_sleep_time(response_text):
+    match = re.search(r"Питомец спит, проснется через (\d+) ч (\d+) м", response_text)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        total_seconds = (hours * 3600) + (minutes * 60)
+        logging.info(f"Время сна: {total_seconds} секунд.")
+        return total_seconds
+    logging.warning("Не удалось найти время сна на странице.")
+    return None
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -192,6 +178,9 @@ async def cookies(update: Update, context: CallbackContext) -> int:
     if session is None:
         await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
         return COOKIES
+
+    # Логируем ответ для отладки
+    logging.info(f"Ответ страницы: {response.text[:1000]}...")  # Логируем первые 1000 символов
 
     # После авторизации отправляем уведомление
     await update.message.reply_text("Авторизация успешна! Теперь выполняем проверки.")
