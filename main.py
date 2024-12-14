@@ -67,32 +67,6 @@ def authorize(login, password, captcha_solution):
     else:
         return f"Ошибка при авторизации, статус: {response.status_code}"
 
-# Функция для проверки перехода по ссылке
-def check_page(url):
-    response = session.get(url)
-    
-    # Проверяем, если статус код 200, значит переход успешен
-    if response.status_code == 200:
-        logging.info(f"Переход по ссылке {url} успешен.")
-        return True
-    else:
-        logging.error(f"Не удалось перейти по ссылке {url}. Статус: {response.status_code}")
-        return False
-
-# Функция для многократного перехода по ссылке
-def visit_links():
-    links = [
-        'https://mpets.mobi/?action=food',
-        'https://mpets.mobi/?action=play'
-    ]
-    
-    for link in links:
-        for _ in range(5):  # Переходим 5 раз по каждой ссылке
-            if check_page(link):
-                logging.info(f"Переход по ссылке {link} успешен!")
-            else:
-                logging.error(f"Не удалось перейти по ссылке {link}.")
-                
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
@@ -137,11 +111,6 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     # Обработка различных типов ошибок
     if result == "success":
         await update.message.reply_text('Авторизация успешна!')
-
-        # Многократный переход по ссылкам
-        visit_links()
-
-        await update.message.reply_text('Переходы по ссылкам завершены.')
     elif "Ошибка авторизации" in result:  # Если ошибка авторизации
         await update.message.reply_text(f'{result}. Попробуйте снова.')
         return LOGIN  # Попросить ввести логин снова
