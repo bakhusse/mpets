@@ -66,7 +66,7 @@ def get_captcha(session):
 
 # Функция для авторизации с капчей
 def authorize(session, login, password, captcha_solution):
-    url = 'https://mpets.mobi/login'  # Примерный URL для авторизации
+    url = 'https://mpets.mobi/welcome'  # Используем правильный URL для авторизации
     data = {
         'login': login,
         'password': password,
@@ -127,6 +127,14 @@ async def start(update: Update, context: CallbackContext) -> int:
     session = create_new_session()
     context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
     
+    # Переходим на страницу welcome для получения сессии
+    response = session.get('https://mpets.mobi/welcome')
+    logging.info(f"Страница welcome открыта, статус: {response.status_code}")
+    
+    if response.status_code != 200:
+        await update.message.reply_text("Не удалось открыть страницу для авторизации.")
+        return ConversationHandler.END
+
     await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
     return LOGIN
 
@@ -179,7 +187,7 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     if result == "success":
         # Проверяем наличие изображения на странице
         if check_image_on_page(page_html):
-            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
+            await update.message.reply_text('Авторизация успешна! Вы на главной странице сайта: https://mpets.mobi/')
         else:
             await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
         return ConversationHandler.END
@@ -189,11 +197,6 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     else:
         await update.message.reply_text(f"Ошибка: {result}. Попробуйте снова.")
         return ConversationHandler.END
-
-# Функция для отмены процесса
-async def cancel(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text("Процесс авторизации отменен.")
-    return ConversationHandler.END
 
 # Главная функция
 async def main():
