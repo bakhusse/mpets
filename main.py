@@ -82,4 +82,95 @@ def authorize(login, password, captcha_solution):
                 return "Неизвестная ошибка авторизации"
     else:
         logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
-        return f"Ошибка при авторизации, статус: {response.status
+        return f"Ошибка при авторизации, статус: {response.status_code}"
+
+# Обработка команды /start
+async def start(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
+    return LOGIN
+
+# Обработка ввода логина
+async def login(update: Update, context: CallbackContext) -> int:
+    user_login = update.message.text
+    context.user_data['login'] = user_login
+    await update.message.reply_text('Теперь введи пароль:')
+    return PASSWORD
+
+# Обработка ввода пароля
+async def password(update: Update, context: CallbackContext) -> int:
+    user_password = update.message.text
+    context.user_data['password'] = user_password
+
+    # Отправляем запрос на сайт для получения капчи
+    captcha_image = get_captcha()
+
+    if captcha_image is None:
+        await update.message.reply_text("Не удалось получить капчу. Попробуйте позже.")
+        return ConversationHandler.END
+
+    # Отправляем капчу пользователю
+    await update.message.reply_text('Реши капчу:')
+    await update.message.reply_photo(photo=captcha_image)
+
+    return CAPTCHA
+
+# Обработка решения капчи
+async def captcha(update: Update, context: CallbackContext) -> int:
+    captcha_solution = update.message.text.strip()
+
+    # Получаем логин и пароль из контекста
+    login = context.user_data['login']
+    password = context.user_data['password']
+
+    # Пытаемся авторизовать пользователя
+    result = authorize(login, password, captcha_solution)
+
+    # Обработка различных типов ошибок
+    if result == "success":
+        await update.message.reply_text('Авторизация успешна!')
+        return ConversationHandler.END
+    elif "Ошибка авторизации" in result:  # Если ошибка авторизации
+        await update.message.reply_text(f'{result}. Попробуйте снова.')
+        return LOGIN  # Попросить ввести логин снова
+    elif result == "Неверная captcha":
+        await update.message.reply_text('Ошибка: Неверная капча. Попробуйте снова.')
+        return LOGIN  # Попросить ввести логин снова
+    elif result == "Неправильное Имя или Пароль":
+        await update.message.reply_text('Ошибка: Неправильное имя или пароль. Попробуйте снова.')
+        return LOGIN  # Попросить ввести логин снова
+    else:
+        await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
+        return LOGIN  # Попросить ввести логин снова
+
+# Функция завершения
+async def cancel(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text('Авторизация отменена.')
+    return ConversationHandler.END
+
+# Основная асинхронная функция для запуска бота
+async def main():
+    # Создаем и запускаем бота
+    application = Application.builder().token(TOKEN).build()
+
+    # Определяем ConversationHandler для обработки пошаговой авторизации
+    conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(conversation_handler)
+
+    # Запускаем бота
+    await application.run_polling()
+
+# Запускаем бота через await в Google Colab
+if __name__ == "__main__":
+    nest_asyncio.apply()  # Это позволяет запускать асинхронный код в уже существующем цикле событий
+
+    # Теперь запускаем бота
+    asyncio.get_event_loop().run_until_complete(main())
