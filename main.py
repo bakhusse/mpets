@@ -74,8 +74,8 @@ def parse_cookies(cookies_data):
 # Проверка на возможность действия (кормить, играть)
 def check_action_links(page_html):
     actions = {
-        "food": r'<a href="/\?action=food&amp;rand=\d+" class="abtn">',  # Для еды
-        "play": r'<a href="/\?action=play&amp;rand=\d+" class="abtn">'   # Для игры
+        "food": r'<a href="/\?action=food&amp;rand=\d+" class="abtn">',
+        "play": r'<a href="/\?action=play&amp;rand=\d+" class="abtn">'
     }
     
     action_found = {}
@@ -84,6 +84,12 @@ def check_action_links(page_html):
     for action, link_pattern in actions.items():
         match = re.search(link_pattern, page_html)
         action_found[action] = bool(match)
+    
+    # Добавим уведомление, если не нашли действия
+    if not action_found["food"]:
+        logging.warning("Не найдено действие для кормления.")
+    if not action_found["play"]:
+        logging.warning("Не найдено действие для игры.")
     
     return action_found
 
@@ -172,7 +178,9 @@ async def cookies(update: Update, context: CallbackContext) -> int:
             rand_food = random.randint(1000, 9999)
             session.get(f"https://mpets.mobi/?action=food&rand={rand_food}")
         await update.message.reply_text("Питомец покормлен!")
-
+    else:
+        await update.message.reply_text("Действие для кормления не найдено.")
+    
     # Проверка возможности поиграть с питомцем
     if action_found["play"]:
         logging.info("Можно поиграть с питомцем, переходим по ссылке.")
@@ -180,6 +188,8 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         rand_play = random.randint(1000, 9999)
         session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
         await update.message.reply_text("Питомец поиграл!")
+    else:
+        await update.message.reply_text("Действие для игры не найдено.")
 
     # После проверок переходить к проверке сна
     logging.info("Проверка состояния сна питомца.")
