@@ -132,6 +132,7 @@ def check_travel(page_html):
             hours = int(match.group(1))
             minutes = int(match.group(2))
             total_seconds = (hours * 60 * 60) + (minutes * 60)
+            logging.info(f"Питомец гуляет. Ожидайте {hours}ч {minutes}м.")
             return total_seconds
     return None
 
