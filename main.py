@@ -82,6 +82,11 @@ def start_session_with_cookies(update, context, cookies_str):
         # Если не JSON, пробуем строку cookies
         cookies_dict = parse_cookies(cookies_str)
     
+    # Если cookies пустые, возвращаем ошибку
+    if not cookies_dict:
+        logging.error("Ошибка: cookies пустые или некорректные.")
+        return None
+    
     # Добавляем cookies в сессию
     session.cookies.update(cookies_dict)
     logging.info(f"Сессия с cookies: {session.cookies.get_dict()}")
@@ -97,7 +102,7 @@ def start_session_with_cookies(update, context, cookies_str):
     
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
 
-    return session
+    return session, response
 
 # Функция для проверки наличия изображения на странице
 def check_image_on_page(page_html):
@@ -131,20 +136,21 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         return COOKIES
 
     # Создаем сессию с переданными cookies
-    session = start_session_with_cookies(update, context, cookies_str)
+    session, response = start_session_with_cookies(update, context, cookies_str)
     
     if session is None:
-        await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Попробуйте снова.")
+        await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
         return COOKIES
 
-    # Проверяем, что авторизация успешна
-    welcome_url = "https://mpets.mobi/welcome"
-    response = session.get(welcome_url)
+    # Если авторизация прошла успешно, обновляем страницу
+    logging.info("Авторизация прошла успешно, выполняем обновление страницы.")
+    response = session.get("https://mpets.mobi/welcome")  # Выполняем повторный запрос для обновления страницы
 
+    # Проверяем, что авторизация успешна
     if response.status_code == 200:
         await update.message.reply_text("Авторизация успешна!")
-        
-        # Проверяем наличие изображения на странице
+
+        # Проверяем наличие изображения на обновленной странице
         if check_image_on_page(response.text):
             await update.message.reply_text("Изображение найдено на странице, все в порядке!")
         else:
