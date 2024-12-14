@@ -93,6 +93,30 @@ def check_action_links(page_html):
     
     return action_found, food_link, play_link
 
+# Проверка поляны
+def check_glade(page_html):
+    if "Шанс найти семена" in page_html:
+        return True
+    # Ищем текст с информацией о времени для следующей попытки
+    match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", page_html)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        total_seconds = (hours * 60 * 60) + (minutes * 60)
+        return total_seconds
+    return None
+
+# Проверка прогулки
+def check_travel(page_html):
+    if "Ваш питомец гуляет" in page_html:
+        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", page_html)
+        if match:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            total_seconds = (hours * 60 * 60) + (minutes * 60)
+            return total_seconds
+    return None
+
 # Эмуляция сессии через cookies
 def start_session_with_cookies(update, context, cookies_str):
     session = create_new_session()
@@ -127,41 +151,6 @@ def start_session_with_cookies(update, context, cookies_str):
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
 
     return session, response
-
-# Функция для извлечения времени сна питомца
-def extract_sleep_time(page_html):
-    # Ищем шаблон "Питомец устал и уснул. Проснется через: 1ч 52м"
-    match = re.search(r"Питомец устал и уснул\. Проснется через: (\d+)ч (\d+)м", page_html)
-    if match:
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        total_seconds = (hours * 60 * 60) + (minutes * 60)
-        return total_seconds
-    return None
-
-# Проверка на завершение прогулки
-def check_travel_complete(page_html):
-    # Ищем текст "Прогулка завершена!"
-    if "Прогулка завершена!" in page_html:
-        return True
-    return False
-
-# Проверка наличия семян на поляне
-def check_seeds_found(page_html):
-    if "Шанс найти семена" in page_html:
-        return True
-    return False
-
-# Проверка на завершение попыток на поляне и извлечение времени
-def extract_glade_time(page_html):
-    # Ищем текст о завершении попыток
-    match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", page_html)
-    if match:
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        total_seconds = (hours * 60 * 60) + (minutes * 60)
-        return total_seconds
-    return None
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -203,45 +192,35 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await asyncio.sleep(sleep_time)
         await update.message.reply_text("Питомец проснулся!")
 
-    # После того как питомец просыпается, выполняем действия с едой, игрой и выставкой
-    action_found, food_link, play_link = check_action_links(response.text)
-    
-    if action_found["food"]:
-        logging.info("Можно покормить питомца, переходим по ссылке.")
-        # Генерируем случайное значение для rand и переходим по ссылке
-        rand_food = random.randint(1000, 9999)
-        session.get(f"https://mpets.mobi/?action=food&rand={rand_food}")  # Переходим по ссылке кормления 6 раз
-        for _ in range(5):
-            rand_food = random.randint(1000, 9999)
-            session.get(f"https://mpets.mobi/?action=food&rand={rand_food}")
-        await update.message.reply_text("Питомец покормлен!")
+    # Проверка поляны
+    logging.info("Проверка поляны.")
+    glade_time = check_glade(response.text)
+    if glade_time is not None:
+        await update.message.reply_text(f"Шанс найти семена не найден. Следующая попытка через {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
+        await asyncio.sleep(glade_time)
+        await update.message.reply_text("Попытка поиска семян снова.")
+    elif "Шанс найти семена" in response.text:
+        logging.info("Шанс найти семена найден, начинаем копать.")
+        # Переходим по ссылке 6 раз
+        for _ in range(6):
+            session.get("https://mpets.mobi/glade_dig")
+        await update.message.reply_text("Вы нашли семена!")
 
-    # Проверка возможности поиграть с питомцем
-    if action_found["play"]:
-        logging.info("Можно поиграть с питомцем, переходим по ссылке.")
-        # Генерируем случайное значение для rand и переходим по ссылке
-        rand_play = random.randint(1000, 9999)
-        session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")  # Переходим по ссылке игры 6 раз
-        for _ in range(5):
-            rand_play = random.randint(1000, 9999)
-            session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
-        await update.message.reply_text("Питомец поиграл!")
+    # Проверка прогулки
+    logging.info("Проверка прогулки.")
+    travel_time = check_travel(response.text)
+    if travel_time:
+        logging.info(f"Питомец гуляет, осталось {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
+        await update.message.reply_text(f"Питомец гуляет. Ожидайте завершения прогулки через {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
+        
+        # Устанавливаем таймер для завершения прогулки
+        await asyncio.sleep(travel_time)
+        await update.message.reply_text("Питомец завершил прогулку. Отправляем его гулять снова.")
 
-    # Переходим по ссылке выставки (6 раз)
-    for _ in range(6):
-        session.get("https://mpets.mobi/show")
-    await update.message.reply_text("Питомец посетил выставку!")
-
-    # После выставки проверяем, не уснул ли питомец
-    if "Питомец устал и уснул" in response.text:
-        await update.message.reply_text("Выставка не прошла, питомец уснул.")
-        return COOKIES
-
-    # Проверка победы на выставке
-    if "Поздравляем! Вы победили!" in response.text:
-        await update.message.reply_text("Поздравляем! Вы победили на выставке!")
-    elif re.search(r"Вы заняли \d+ место", response.text):
-        await update.message.reply_text("Вы заняли место на выставке!")
+        # Переходим по ссылке на прогулку (с понижением от 10 до 1)
+        for i in range(10, 0, -1):
+            session.get(f"https://mpets.mobi/go_travel?id={i}")
+        await update.message.reply_text("Питомец снова отправился на прогулку!")
 
     return ConversationHandler.END
 
