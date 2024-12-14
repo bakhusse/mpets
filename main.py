@@ -7,6 +7,7 @@ import logging
 import asyncio
 import nest_asyncio
 import colorlog  # Для цветного логирования
+import re
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -98,13 +99,26 @@ def authorize(session, login, password, captcha_solution):
             # Если авторизация успешна, проверяем на редирект на главную страницу
             if "mpets.mobi" in response.url:
                 logging.info("Авторизация успешна! Переход на главную страницу.")
-                return "success"
+                return "success", response.text  # Возвращаем HTML-страницу
             else:
                 logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
                 return "Неизвестная ошибка авторизации"
     else:
         logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
         return f"Ошибка при авторизации, статус: {response.status_code}"
+
+# Функция для проверки наличия изображения на странице
+def check_image_on_page(page_html):
+    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt="">
+    image_pattern = r'<img class="price_img" src="/view/image/icons/coin.png" alt="">'
+    match = re.search(image_pattern, page_html)
+
+    if match:
+        logging.info("Изображение найдено на странице.")
+        return True
+    else:
+        logging.error("Изображение не найдено на странице.")
+        return False
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -160,11 +174,15 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     session = context.user_data['session']
 
     # Пытаемся авторизовать пользователя
-    result = authorize(session, login, password, captcha_solution)
+    result, page_html = authorize(session, login, password, captcha_solution)
 
     # Обработка различных типов ошибок
     if result == "success":
-        await update.message.reply_text('Авторизация успешна! Теперь вы на главной странице сайта: https://mpets.mobi/')
+        # Проверяем наличие изображения на странице
+        if check_image_on_page(page_html):
+            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
+        else:
+            await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
         return ConversationHandler.END
     elif "Ошибка авторизации" in result:  # Если ошибка авторизации
         await update.message.reply_text(f'{result}. Попробуйте снова.')
@@ -177,28 +195,25 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text('Ошибка капчи. Для начала нового процесса авторизации используйте команду /start.')
         return ConversationHandler.END
     else:
-        await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
-        context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text(f'Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
+        await update.message.reply_text(f'Ошибка: {result}. Попробуйте снова.')
         return ConversationHandler.END
 
-# Функция завершения
+# Обработчик команды /cancel
 async def cancel(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text('Авторизация отменена.')
+    await update.message.reply_text('Процесс авторизации был отменен.')
     return ConversationHandler.END
 
-# Основная асинхронная функция для запуска бота
+# Главная функция
 async def main():
-    # Создаем и запускаем бота
     application = Application.builder().token(TOKEN).build()
 
-    # Устанавливаем ConversationHandler
+    # Обработчики команд и состояний
     conversation_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],  # Команда /start
+        entry_points=[CommandHandler('start', start)],
         states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters.Command(), login)],
-            PASSWORD: [MessageHandler(filters.TEXT & ~filters.Command(), password)],
-            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.Command(), captcha)],
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
