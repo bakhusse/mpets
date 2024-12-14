@@ -1,3 +1,4 @@
+import asyncio  # Добавьте это в начало кода
 import time
 import logging
 import requests
@@ -10,6 +11,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
+import nest_asyncio  # Эта строка остаётся, если вы используете Google Colab или Jupyter Notebook
 
 # Конфигурация
 TELEGRAM_TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'  # Ваш токен
@@ -155,6 +157,5 @@ async def main():
 
 if __name__ == '__main__':
     # Если вы работаете в Jupyter или Colab, запускать через asyncio.run() не нужно
-    import nest_asyncio
     nest_asyncio.apply()  # Применяем patch для работы с уже работающим циклом
-    asyncio.run(main())
+    asyncio.run(main())  # Теперь asyncio импортирован
