@@ -1,4 +1,4 @@
-import asyncio  # Добавлен импорт asyncio
+import asyncio
 import requests
 from io import BytesIO
 from telegram import Update
@@ -8,12 +8,18 @@ import colorlog  # Для цветного логирования
 import re
 import nest_asyncio  # Для работы с уже существующим циклом событий
 from PIL import Image  # Для работы с изображениями
+import os  # Для работы с файлами
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
 
 # Ваш токен Telegram-бота
 TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
+
+# Папка для сохранения капчи
+CAPTCHA_FOLDER = 'captcha_images'
+if not os.path.exists(CAPTCHA_FOLDER):
+    os.makedirs(CAPTCHA_FOLDER)
 
 # Настройка цветного логирования
 log_formatter = colorlog.ColoredFormatter(
@@ -53,14 +59,14 @@ def get_captcha(session):
     captcha_image = response.content
     logging.info(f"Капча получена, размер: {len(captcha_image)} байт")
     
-    # Преобразуем изображение в формат, который Telegram поддерживает
-    try:
-        img_byte_arr = BytesIO(captcha_image)
-        img_byte_arr.seek(0)  # Возвращаем указатель в начало
-        return img_byte_arr
-    except Exception as e:
-        logging.error(f"Не удалось обработать капчу: {e}")
-        return None
+    # Сохранение капчи как файл
+    captcha_filename = os.path.join(CAPTCHA_FOLDER, 'captcha.png')
+    with open(captcha_filename, 'wb') as f:
+        f.write(captcha_image)
+    logging.info(f"Капча сохранена как {captcha_filename}")
+    
+    # Возвращаем путь к сохраненному файлу
+    return captcha_filename
 
 # Функция для авторизации с капчей
 def authorize(session, login, password, captcha_solution):
@@ -136,8 +142,9 @@ def start_session(update, context):
     return session
 
 # Функция для отправки капчи в Telegram
-async def send_captcha(update: Update, context: CallbackContext, captcha_image):
-    await update.message.reply_photo(photo=captcha_image)
+async def send_captcha(update: Update, context: CallbackContext, captcha_filename):
+    with open(captcha_filename, 'rb') as file:
+        await update.message.reply_photo(photo=file)
     logging.info("Капча отправлена в Telegram.")
 
 # Обработка команды /start
@@ -172,15 +179,15 @@ async def password(update: Update, context: CallbackContext) -> int:
     session = context.user_data['session']
 
     # Отправляем запрос на сайт для получения капчи
-    captcha_image = get_captcha(session)
+    captcha_filename = get_captcha(session)
 
-    if captcha_image is None:
+    if captcha_filename is None:
         await update.message.reply_text("Не удалось получить капчу. Попробуйте позже.")
         return ConversationHandler.END
 
     # Отправляем капчу пользователю
     await update.message.reply_text('Реши капчу:')
-    await send_captcha(update, context, captcha_image)
+    await send_captcha(update, context, captcha_filename)
 
     return CAPTCHA
 
@@ -206,9 +213,9 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     if result == "success":
         # Проверяем наличие изображения на странице
         if check_image_on_page(page_html):
-            await update.message.reply_text('Авторизация успешна! Изображение подтверждено.')
+            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
         else:
-            await update.message.reply_text('Авторизация успешна, но изображение не найдено.')
+            await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
         return ConversationHandler.END
     else:
         await update.message.reply_text(f"Ошибка: {result}. Попробуйте снова.")
@@ -216,7 +223,7 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 
 # Главная функция
 async def main():
-    # Используем nest_asyncio для обработки циклов событий в Jupyter/Colab
+    # Используем nest_asyncio для обработки циклов событий в Jupyter
     nest_asyncio.apply()
 
     application = Application.builder().token(TOKEN).build()
@@ -237,5 +244,4 @@ async def main():
     await application.run_polling()
 
 if __name__ == '__main__':
-    # Запускаем уже существующий цикл событий
     asyncio.get_event_loop().run_until_complete(main())
