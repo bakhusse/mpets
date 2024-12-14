@@ -132,23 +132,23 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     elif "Ошибка авторизации" in result:  # Если ошибка авторизации
         await update.message.reply_text(f'{result}. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные (логин, пароль)
-        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return await start(update, context)  # Перезапуск процесса авторизации
+        await update.message.reply_text('Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
+        return ConversationHandler.END
     elif result == "Неверная captcha":
         await update.message.reply_text('Ошибка: Неверная капча. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return await start(update, context)  # Перезапуск процесса авторизации
+        await update.message.reply_text('Неверная капча. Для начала нового процесса авторизации используйте команду /start.')
+        return ConversationHandler.END
     elif result == "Неправильное Имя или Пароль":
         await update.message.reply_text('Ошибка: Неправильное имя или пароль. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return await start(update, context)  # Перезапуск процесса авторизации
+        await update.message.reply_text('Неправильное имя или пароль. Для начала нового процесса авторизации используйте команду /start.')
+        return ConversationHandler.END
     else:
         await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return await start(update, context)  # Перезапуск процесса авторизации
+        await update.message.reply_text(f'Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
+        return ConversationHandler.END
 
 # Функция завершения
 async def cancel(update: Update, context: CallbackContext) -> int:
