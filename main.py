@@ -1,3 +1,4 @@
+import asyncio  # Добавляем импорт asyncio
 import requests
 from io import BytesIO
 from PIL import Image
@@ -183,7 +184,7 @@ async def main():
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
             CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)]  # Пример fallback
     )
 
     application.add_handler(conversation_handler)
