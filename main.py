@@ -184,7 +184,7 @@ async def main():
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
             CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)]  # Пример fallback
+        fallbacks=[]  # Убираем обработчик cancel
     )
 
     application.add_handler(conversation_handler)
