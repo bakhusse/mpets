@@ -1,9 +1,9 @@
-import threading
 import requests
 from io import BytesIO
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
+import asyncio
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -82,8 +82,8 @@ async def cancel(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text('Авторизация отменена.')
     return ConversationHandler.END
 
-# Функция для запуска бота в отдельном потоке
-def run_bot():
+# Основная асинхронная функция для запуска бота
+async def main():
     # Создаем и запускаем бота
     application = Application.builder().token(TOKEN).build()
 
@@ -99,8 +99,9 @@ def run_bot():
     )
 
     application.add_handler(conversation_handler)
-    application.run_polling()
 
-# Запускаем бота в отдельном потоке
-bot_thread = threading.Thread(target=run_bot)
-bot_thread.start()
+    # Запускаем бота
+    await application.run_polling()
+
+# Запускаем бота с asyncio
+asyncio.run(main())
