@@ -173,7 +173,10 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 
     # Обработка различных типов ошибок
     if result == "success":
-        await update.message.reply_text('Авторизация успешна! Перехожу на главную страницу...')
+        await update.message.reply_text('Авторизация успешна! Перехожу на главную страницу.')
+        return ConversationHandler.END
+    elif "Ошибка авторизации" in result:  # Если ошибка авторизации
+        await update.message.reply_text(result)
         return ConversationHandler.END
     else:
         await update.message.reply_text(f"Ошибка: {result}. Попробуйте снова.")
