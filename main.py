@@ -1,13 +1,11 @@
 import requests
-from io import BytesIO
-from PIL import Image
+import socket
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
 import asyncio
 import nest_asyncio
 import colorlog  # Для цветного логирования
-import re
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -34,173 +32,79 @@ console_handler.setFormatter(log_formatter)
 logging.getLogger().addHandler(console_handler)
 logging.getLogger().setLevel(logging.DEBUG)
 
-# Функция для создания новой сессии
-def create_new_session():
-    session = requests.Session()
-    logging.info("Создание новой сессии.")
-    return session
-
-# Функция для получения капчи с сайта
-def get_captcha(session):
-    url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
-    logging.info(f"Отправка запроса на получение капчи: {url}")
-    response = session.get(url)
-    
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить капчу. Статус: {response.status_code}")
-        return None
-    
-    captcha_image = response.content
-    logging.info(f"Капча получена, размер: {len(captcha_image)} байт")
-    
-    # Попробуем преобразовать изображение в формат, который Telegram поддерживает
+# Функция для получения публичного IP через внешний сервис
+def get_public_ip():
     try:
-        image = Image.open(BytesIO(captcha_image))
-        img_byte_arr = BytesIO()
-        image.save(img_byte_arr, format='PNG')  # Сохраняем в PNG
-        img_byte_arr.seek(0)  # Возвращаем указатель в начало
-        return img_byte_arr
-    except Exception as e:
-        logging.error(f"Не удалось обработать капчу: {e}")
+        response = requests.get('https://api.ipify.org?format=json')
+        ip = response.json()['ip']
+        return ip
+    except requests.RequestException as e:
+        logging.error(f"Не удалось получить публичный IP: {e}")
         return None
 
-# Функция для авторизации с капчей
-def authorize(session, login, password, captcha_solution):
-    url = 'https://mpets.mobi/login'  # Примерный URL для авторизации
-    data = {
-        'login': login,
-        'password': password,
-        'captcha': captcha_solution
-    }
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    
-    logging.info(f"Отправка запроса на авторизацию с данными: {data}")
-    response = session.post(url, data=data, headers=headers, allow_redirects=True)
+# Функция для получения локального IP (если нужно)
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))  # Можно подключиться к Google DNS для определения IP
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception as e:
+        logging.error(f"Не удалось получить локальный IP: {e}")
+        return None
 
-    logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
-
-    # Проверка на ошибку авторизации
-    if response.status_code == 200:
-        if "Неверная captcha" in response.text:
-            logging.error("Неверная капча.")
-            return "Неверная captcha"
-        elif "Неправильное Имя или Пароль" in response.text:
-            logging.error("Неправильное имя или пароль.")
-            return "Неправильное имя или пароль"
-        elif "error=" in response.url and "welcome" in response.url:
-            # Обрабатываем редирект с ошибкой авторизации
-            error_code = response.url.split('error=')[-1]
-            logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
-            return f"Ошибка авторизации, код ошибки: {error_code}"
-        else:
-            # Если авторизация успешна, проверяем на редирект на главную страницу
-            if "mpets.mobi" in response.url:
-                logging.info("Авторизация успешна! Переход на главную страницу.")
-                return "success", response.text  # Возвращаем HTML-страницу
-            else:
-                logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
-                return "Неизвестная ошибка авторизации"
-    else:
-        logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
-        return f"Ошибка при авторизации, статус: {response.status_code}"
-
-# Функция для проверки наличия изображения на странице
-def check_image_on_page(page_html):
-    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt="">
-    image_pattern = r'<img class="price_img" src="/view/image/icons/coin.png" alt="">'
-    match = re.search(image_pattern, page_html)
-
-    if match:
-        logging.info("Изображение найдено на странице.")
-        return True
-    else:
-        logging.error("Изображение не найдено на странице.")
-        return False
+# Функция для авторизации (все действия с авторизацией будут здесь)
+async def authorize(update: Update, context: CallbackContext):
+    # Тут будет код авторизации, возможно с использованием сессий и ввода логина/пароля/капчи
+    await update.message.reply_text("Процесс авторизации начнется.")
+    return LOGIN
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации.")
     
-    # Создаем новую сессию сразу при старте
-    session = create_new_session()
-    context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
+    # Получаем публичный IP сервера
+    public_ip = get_public_ip()
     
-    await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
-    return LOGIN
+    if public_ip:
+        ip_message = f"Привет! Мой публичный IP адрес: {public_ip}"
+    else:
+        ip_message = "Привет! Не удалось получить публичный IP адрес."
+    
+    await update.message.reply_text(ip_message)
+    
+    # Запуск авторизации
+    await authorize(update, context)
+    
+    return LOGIN  # Возвращаемся к состоянию LOGIN для ввода логина
 
-# Обработка ввода логина
+# Функция для обработки ввода логина (пример)
 async def login(update: Update, context: CallbackContext) -> int:
     user_login = update.message.text
-    context.user_data['login'] = user_login
-    logging.info(f"Пользователь ввел логин: {user_login}")
-    await update.message.reply_text('Теперь введи пароль:')
+    # Тут будет логика обработки логина
+    await update.message.reply_text(f"Вы ввели логин: {user_login}")
     return PASSWORD
 
-# Обработка ввода пароля
+# Функция для обработки ввода пароля (пример)
 async def password(update: Update, context: CallbackContext) -> int:
     user_password = update.message.text
-    context.user_data['password'] = user_password
-    logging.info(f"Пользователь ввел пароль.")
-
-    # Получаем сессию из контекста
-    session = context.user_data['session']
-
-    # Отправляем запрос на сайт для получения капчи
-    captcha_image = get_captcha(session)
-
-    if captcha_image is None:
-        await update.message.reply_text("Не удалось получить капчу. Попробуйте позже.")
-        return ConversationHandler.END
-
-    # Отправляем капчу пользователю
-    await update.message.reply_text('Реши капчу:')
-    await update.message.reply_photo(photo=captcha_image)
-
+    # Тут будет логика обработки пароля
+    await update.message.reply_text(f"Вы ввели пароль: {user_password}")
     return CAPTCHA
 
-# Обработка решения капчи
+# Функция для обработки ввода капчи (пример)
 async def captcha(update: Update, context: CallbackContext) -> int:
-    captcha_solution = update.message.text.strip()
-    logging.info(f"Пользователь ввел капчу: {captcha_solution}")
+    captcha_solution = update.message.text
+    # Тут будет логика обработки капчи
+    await update.message.reply_text(f"Вы ввели капчу: {captcha_solution}")
+    # Переход к следующему этапу, если авторизация успешна
+    await update.message.reply_text("Авторизация прошла успешно!")
+    return ConversationHandler.END
 
-    # Получаем логин и пароль из контекста
-    login = context.user_data['login']
-    password = context.user_data['password']
-
-    # Получаем сессию из контекста
-    session = context.user_data['session']
-
-    # Пытаемся авторизовать пользователя
-    result, page_html = authorize(session, login, password, captcha_solution)
-
-    # Обработка различных типов ошибок
-    if result == "success":
-        # Проверяем наличие изображения на странице
-        if check_image_on_page(page_html):
-            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
-        else:
-            await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
-        return ConversationHandler.END
-    elif "Ошибка авторизации" in result:  # Если ошибка авторизации
-        await update.message.reply_text(f'{result}. Попробуйте снова.')
-        context.user_data.clear()  # Очищаем данные (логин, пароль)
-        await update.message.reply_text('Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
-        return ConversationHandler.END
-    elif result == "Неверная captcha":
-        await update.message.reply_text('Неверная captcha. Попробуйте снова.')
-        context.user_data.clear()  # Очищаем данные
-        await update.message.reply_text('Ошибка капчи. Для начала нового процесса авторизации используйте команду /start.')
-        return ConversationHandler.END
-    else:
-        await update.message.reply_text(f'Ошибка: {result}. Попробуйте снова.')
-        return ConversationHandler.END
-
-# Обработчик команды /cancel
+# Функция для отмены процесса авторизации
 async def cancel(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text('Процесс авторизации был отменен.')
+    await update.message.reply_text("Процесс авторизации был отменен.")
     return ConversationHandler.END
 
 # Главная функция
