@@ -199,7 +199,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         # Устанавливаем таймер
         await asyncio.sleep(sleep_time)
         await update.message.reply_text("Питомец проснулся!")
-    
+
     # После того как питомец просыпается, выполняем действия с едой, игрой и выставкой
     action_found, food_link, play_link = check_action_links(response.text)
     
@@ -223,29 +223,50 @@ async def cookies(update: Update, context: CallbackContext) -> int:
             rand_play = random.randint(1000, 9999)
             session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
         await update.message.reply_text("Питомец поиграл!")
-    
-    # Выполнение действий по выставке (6 раз)
-    logging.info("Переход по ссылке для выставки.")
+
+    # Переходим по ссылке выставки (6 раз)
     for _ in range(6):
         session.get("https://mpets.mobi/show")
-    await update.message.reply_text("Выставка завершена!")
+    await update.message.reply_text("Питомец посетил выставку!")
 
-    # Переход по ссылке для пробуждения питомца (один раз)
-    session.get("https://mpets.mobi/wakeup")
+    # После выставки проверяем, не уснул ли питомец
+    if "Питомец устал и уснул" in response.text:
+        await update.message.reply_text("Выставка не прошла, питомец уснул.")
+        return COOKIES
+
+    # Проверяем поляны на семена
+    if check_seeds_found(response.text):
+        await update.message.reply_text("Шанс найти семена найден. Переходим по ссылке.")
+        for _ in range(6):
+            session.get("https://mpets.mobi/glade_dig")
+
+    # Проверяем прогулки
+    if "Ваш питомец гуляет" in response.text:
+        # Извлекаем время прогулки
+        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
+        if match:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            total_seconds = (hours * 60 * 60) + (minutes * 60)
+            await update.message.reply_text(f"Питомец гуляет. Время до конца прогулки: {hours}ч {minutes}м.")
+            await asyncio.sleep(total_seconds)
+            await update.message.reply_text("Питомец завершил прогулку!")
+
+    return ConversationHandler.END
+
+# Основная часть с бота и настройками
+def main():
+    application = Application.builder().token(TOKEN).build()
     
-    await update.message.reply_text("Питомец проснулся после всех действий.")
+    # Добавляем обработчики
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={COOKIES: [MessageHandler(filters.TEXT, cookies)]},
+        fallbacks=[],
+    )
 
-    return START
-
-# Создание приложения бота
-application = Application.builder().token(TOKEN).build()
-
-# Хендлеры для команд
-application.add_handler(CommandHandler("start", start))
-
-# Хендлер для получения cookies
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, cookies))
-
-# Запуск бота
-if __name__ == '__main__':
+    application.add_handler(conv_handler)
     application.run_polling()
+
+if __name__ == "__main__":
+    main()
