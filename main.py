@@ -225,20 +225,18 @@ async def cookies(update: Update, context: CallbackContext) -> int:
     # Проверка поляны
     glade_check = check_glade(session)
     if glade_check is True:
-        # Если семена можно найти
         logging.info("Переход по ссылке для поиска семян на поляне.")
         for _ in range(6):  # Переход по ссылке поиска семян 6 раз
             session.get(f"{base_url}/glade_dig")
         await update.message.reply_text("Вы нашли семена на поляне!")
     elif isinstance(glade_check, int):
-        # Если время для поиска семян еще не пришло
         await update.message.reply_text(f"Невозможно найти семена на поляне. Ожидайте {glade_check // 3600}ч {(glade_check % 3600) // 60}м.")
         await asyncio.sleep(glade_check)
         await update.message.reply_text("Время ожидания прошло. Ищем семена на поляне.")
         for _ in range(6):  # Переход по ссылке поиска семян 6 раз
             session.get(f"{base_url}/glade_dig")
         await update.message.reply_text("Вы нашли семена на поляне!")
-    
+
     # Проверка прогулки
     logging.info("Проверка прогулки.")
     travel_time = check_travel(response.text)
