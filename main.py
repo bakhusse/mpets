@@ -8,6 +8,7 @@ import asyncio
 import nest_asyncio
 import colorlog  # Для цветного логирования
 import re
+from PIL import Image
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
