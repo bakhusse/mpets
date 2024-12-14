@@ -133,22 +133,22 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text(f'{result}. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные (логин, пароль)
         await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return LOGIN  # Попросить ввести логин снова
+        return await start(update, context)  # Перезапуск процесса авторизации
     elif result == "Неверная captcha":
         await update.message.reply_text('Ошибка: Неверная капча. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные
         await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return LOGIN  # Попросить ввести логин снова
+        return await start(update, context)  # Перезапуск процесса авторизации
     elif result == "Неправильное Имя или Пароль":
         await update.message.reply_text('Ошибка: Неправильное имя или пароль. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные
         await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return LOGIN  # Попросить ввести логин снова
+        return await start(update, context)  # Перезапуск процесса авторизации
     else:
         await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные
         await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
-        return LOGIN  # Попросить ввести логин снова
+        return await start(update, context)  # Перезапуск процесса авторизации
 
 # Функция завершения
 async def cancel(update: Update, context: CallbackContext) -> int:
