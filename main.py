@@ -175,7 +175,7 @@ async def main():
     application.add_handler(conversation_handler)
 
     # Запускаем бота
-    await application.run_polling(allowed_updates=Update.ALL)
+    await application.run_polling()
 
 # Запускаем бота через await в Google Colab
 if __name__ == "__main__":
