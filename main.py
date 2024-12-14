@@ -4,6 +4,9 @@ from PIL import Image
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
+import asyncio
+import nest_asyncio
+import colorlog  # Для цветного логирования
 import re
 
 # Состояния для ConversationHandler
@@ -11,6 +14,25 @@ LOGIN, PASSWORD, CAPTCHA = range(3)
 
 # Ваш токен Telegram-бота
 TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
+
+# Настройка цветного логирования
+log_formatter = colorlog.ColoredFormatter(
+    '%(log_color)s[%(asctime)s] - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    log_colors={
+        'DEBUG': 'blue',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'bold_red',
+    }
+)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+logging.getLogger().addHandler(console_handler)
+logging.getLogger().setLevel(logging.DEBUG)
 
 # Функция для создания новой сессии
 def create_new_session():
@@ -20,37 +42,18 @@ def create_new_session():
 
 # Функция для получения капчи с сайта
 def get_captcha(session):
-    # Шаг 1: Получаем HTML страницы для извлечения капчи
-    url = 'https://mpets.mobi/login'  # Страница с капчей
-    logging.info(f"Отправка запроса на страницу авторизации: {url}")
+    url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
+    logging.info(f"Отправка запроса на получение капчи: {url}")
     response = session.get(url)
     
     if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу для капчи. Статус: {response.status_code}")
+        logging.error(f"Не удалось получить капчу. Статус: {response.status_code}")
         return None
     
-    # Шаг 2: Извлекаем ссылку на капчу из HTML
-    captcha_url_match = re.search(r'<img style="width: 100%; display: block" src="(/captcha\?r=\d+)"', response.text)
-    
-    if not captcha_url_match:
-        logging.error("Не удалось найти URL капчи на странице.")
-        return None
-
-    captcha_url = captcha_url_match.group(1)
-    full_captcha_url = f"https://mpets.mobi{captcha_url}"
-    logging.info(f"URL капчи: {full_captcha_url}")
-    
-    # Шаг 3: Получаем изображение капчи
-    captcha_response = session.get(full_captcha_url)
-    
-    if captcha_response.status_code != 200:
-        logging.error(f"Не удалось получить капчу. Статус: {captcha_response.status_code}")
-        return None
-    
-    captcha_image = captcha_response.content
+    captcha_image = response.content
     logging.info(f"Капча получена, размер: {len(captcha_image)} байт")
     
-    # Преобразуем изображение в формат, поддерживаемый Telegram
+    # Попробуем преобразовать изображение в формат, который Telegram поддерживает
     try:
         image = Image.open(BytesIO(captcha_image))
         img_byte_arr = BytesIO()
@@ -75,9 +78,9 @@ def authorize(session, login, password, captcha_solution):
     }
     
     logging.info(f"Отправка запроса на авторизацию с данными: {data}")
-    response = session.post(url, data=data, headers=headers, allow_redirects=True)
+    response = session.post(url, data=data, headers=headers)
 
-    logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")
+    logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
 
     # Проверка на ошибку авторизации
     if response.status_code == 200:
@@ -88,9 +91,11 @@ def authorize(session, login, password, captcha_solution):
             logging.error("Неправильное имя или пароль.")
             return "Неправильное имя или пароль", None
         elif "Oops! Your session is expired" in response.text:
+            # Если сессия истекла, перезапускаем процесс
             logging.error("Сессия истекла. Перезапуск авторизации.")
             return "Сессия истекла. Пожалуйста, начните с /start.", None
         elif "mpets.mobi" in response.url:
+            # Если авторизация успешна, проверяем на редирект на главную страницу
             logging.info("Авторизация успешна! Переход на главную страницу.")
             return "success", response.text  # Возвращаем HTML-страницу
         else:
@@ -100,13 +105,26 @@ def authorize(session, login, password, captcha_solution):
         logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
         return f"Ошибка при авторизации, статус: {response.status_code}", None
 
+# Функция для проверки наличия изображения на странице
+def check_image_on_page(page_html):
+    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt=""/>
+    image_pattern = r'<img class="price_img" src="/view/image/icons/coin.png" alt="">'
+    match = re.search(image_pattern, page_html)
+
+    if match:
+        logging.info("Изображение найдено на странице.")
+        return True
+    else:
+        logging.error("Изображение не найдено на странице.")
+        return False
+
 # Эмуляция сессии через cookies и необходимые шаги
-async def start_session(update, context):
+def start_session(update, context):
     session = create_new_session()
     context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
 
     # Выполняем запрос на страницу welcome и сохраняем cookies
-    welcome_url = "https://mpets.mobi/login"
+    welcome_url = "https://mpets.mobi/welcome"
     logging.info(f"Запрос на страницу {welcome_url}")
     response = session.get(welcome_url)
     
@@ -174,19 +192,31 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     # Получаем сессию из контекста
     session = context.user_data['session']
 
-    # Попробуем авторизоваться
-    status, response = authorize(session, login, password, captcha_solution)
+    # Пытаемся авторизовать пользователя
+    result, page_html = authorize(session, login, password, captcha_solution)
 
-    if status == "success":
-        await update.message.reply_text("Авторизация успешна! Добро пожаловать!")
+    # Обработка различных типов ошибок
+    if result == "success":
+        # Проверяем наличие изображения на странице
+        if check_image_on_page(page_html):
+            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
+        else:
+            await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
+        return ConversationHandler.END
+    elif "Ошибка авторизации" in result:  # Если ошибка авторизации
+        await update.message.reply_text(result)
         return ConversationHandler.END
     else:
-        await update.message.reply_text(f"Ошибка авторизации: {status}")
+        await update.message.reply_text(f"Ошибка: {result}. Попробуйте снова.")
         return ConversationHandler.END
 
-# Настройка бота
+# Главная функция
 async def main():
+    # Используем nest_asyncio для обработки циклов событий в Jupyter
+    nest_asyncio.apply()
+
     application = Application.builder().token(TOKEN).build()
+
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -196,9 +226,11 @@ async def main():
         },
         fallbacks=[],
     )
+
     application.add_handler(conversation_handler)
+
+    logging.info("Бот запущен.")
     await application.run_polling()
 
 if __name__ == '__main__':
-    import asyncio
     asyncio.run(main())
