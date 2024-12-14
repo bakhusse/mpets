@@ -96,8 +96,9 @@ def authorize(session, login, password, captcha_solution):
             return "Сессия истекла. Пожалуйста, начните с /start.", None
         elif "mpets.mobi" in response.url:
             # Если авторизация успешна, проверяем на редирект на главную страницу
-            logging.info("Авторизация успешна! Переход на главную страницу.")
-            return "success", response.text  # Возвращаем HTML-страницу
+            logging.info("Авторизация успешна! Переход на страницу /login.")
+            login_url = "https://mpets.mobi/login"  # Переход на страницу login
+            return "redirect_to_login", login_url
         else:
             logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
             return "Неизвестная ошибка авторизации", None
@@ -194,6 +195,10 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 
     # Пытаемся авторизовать пользователя
     result, page_html = authorize(session, login, password, captcha_solution)
+
+    if result == "redirect_to_login":
+        await update.message.reply_text(f"Авторизация успешна! Переход на страницу входа: {page_html}")
+        return ConversationHandler.END
 
     # Обработка различных типов ошибок
     if result == "success":
