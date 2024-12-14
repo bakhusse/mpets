@@ -1,128 +1,120 @@
-import threading
-import requests
-from io import BytesIO
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext
 import logging
+import requests
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
+import nest_asyncio
+from bs4 import BeautifulSoup
+
+# Настройка цветного логирования
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler = logging.StreamHandler()
+
+logging.basicConfig(level=logging.DEBUG, handlers=[console_handler])
+logger = logging.getLogger()
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
 
-# Ваш токен Telegram-бота
-TOKEN = 'YOUR_BOT_TOKEN'
+# Ваш токен Telegram-бота (замените на ваш реальный токен)
+TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
 
-# Инициализация сессии
-session = requests.Session()
+# Функция авторизации (отправка запроса на сайт)
+def authorize_on_site(username, password, captcha):
+    session = requests.Session()
+    
+    # Первая страница авторизации
+    login_url = 'https://mpets.mobi/login'
+    login_page = session.get(login_url)
+    
+    # Извлекаем параметры для авторизации (например, CSRF токен)
+    soup = BeautifulSoup(login_page.text, 'html.parser')
+    csrf_token = soup.find('input', {'name': 'csrf_token'})['value']  # Пример
+    
+    # Данные для отправки
+    payload = {
+        'username': username,
+        'password': password,
+        'captcha': captcha,
+        'csrf_token': csrf_token
+    }
+    
+    # Отправляем запрос на авторизацию
+    response = session.post(login_url, data=payload)
+    
+    # Проверяем, прошла ли авторизация
+    if 'Oops! Your session is expired' in response.text:
+        return False
+    return True
 
-# Функция для получения капчи с сайта
-def get_captcha():
-    url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
-    response = session.get(url)
-    captcha_image = response.content
-    return captcha_image
-
-# Функция для решения капчи с помощью 2Captcha или другого сервиса
-def solve_captcha(captcha_image):
-    # Используем сторонний сервис для решения капчи
-    # Это можно делать через API, например, 2Captcha
-    # Пример использования 2Captcha:
-    api_key = 'YOUR_2CAPTCHA_API_KEY'
-    captcha_id = request_captcha(api_key, captcha_image)  # Функция для отправки капчи на сервис
-    return solve_captcha_request(api_key, captcha_id)
-
-def request_captcha(api_key, captcha_image):
-    # Отправка капчи на сервер 2Captcha и получение ID задачи
-    url = f'http://2captcha.com/in.php?key={api_key}&method=userrecaptcha'
-    files = {'file': captcha_image}
-    response = requests.post(url, files=files)
-    captcha_id = response.text.split('|')[1]
-    return captcha_id
-
-def solve_captcha_request(api_key, captcha_id):
-    # Получение решения капчи
-    url = f'http://2captcha.com/res.php?key={api_key}&action=get&id={captcha_id}'
-    while True:
-        response = requests.get(url)
-        if 'OK' in response.text:
-            return response.text.split('|')[1]
-        else:
-            time.sleep(5)
-
-# Обработка команды /start
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
-    return LOGIN
+# Функция, которая будет запускаться по команде /start
+async def start(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text("Добро пожаловать! Пожалуйста, введите ваш логин.")
+    return LOGIN  # Переходим к вводу логина
 
 # Обработка ввода логина
-def login(update: Update, context: CallbackContext):
-    user_login = update.message.text
-    context.user_data['login'] = user_login
-    update.message.reply_text('Теперь введи пароль:')
-    return PASSWORD
+async def login(update: Update, context: CallbackContext) -> int:
+    context.user_data['login'] = update.message.text
+    await update.message.reply_text("Пожалуйста, введите ваш пароль.")
+    return PASSWORD  # Переходим к вводу пароля
 
 # Обработка ввода пароля
-def password(update: Update, context: CallbackContext):
-    user_password = update.message.text
-    context.user_data['password'] = user_password
+async def password(update: Update, context: CallbackContext) -> int:
+    context.user_data['password'] = update.message.text
+    # Отправляем запрос на сервер, чтобы получить капчу
+    session = requests.Session()
+    response = session.get('https://mpets.mobi/login')
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Извлекаем капчу, если она есть
+    captcha_url = soup.find('img', {'id': 'captcha_img'})['src']
+    context.user_data['captcha_url'] = captcha_url
+    await update.message.reply_text(f"Пожалуйста, введите капчу. Вот изображение: {captcha_url}")
+    
+    return CAPTCHA  # Переходим к вводу капчи
 
-    # Отправляем запрос на сайт для получения капчи
-    captcha_image = get_captcha()
-
-    # Отправляем капчу пользователю
-    update.message.reply_text('Реши капчу:')
-    update.message.reply_photo(photo=BytesIO(captcha_image))
-
-    return CAPTCHA
-
-# Обработка решения капчи
-def captcha(update: Update, context: CallbackContext):
+# Обработка ввода капчи
+async def captcha(update: Update, context: CallbackContext) -> int:
     captcha_solution = update.message.text
-
-    # Отправляем решение на сайт и завершаем авторизацию
     login = context.user_data['login']
     password = context.user_data['password']
-
-    # Пример авторизации с капчей
-    data = {
-        'login': login,
-        'password': password,
-        'captcha': captcha_solution
-    }
-    response = session.post('https://mpets.mobi/login', data=data)
-
-    if response.ok and 'success' in response.text:  # Пример проверки успешной авторизации
-        update.message.reply_text('Авторизация успешна!')
+    
+    # Проверяем авторизацию на сайте
+    if authorize_on_site(login, password, captcha_solution):
+        await update.message.reply_text("Авторизация прошла успешно!")
+        return ConversationHandler.END  # Завершаем процесс
     else:
-        update.message.reply_text('Ошибка авторизации. Попробуй снова.')
+        await update.message.reply_text("Ошибка авторизации. Попробуйте снова команду /start.")
+        return ConversationHandler.END  # Завершаем процесс
 
+# Функция для отмены процесса
+async def cancel(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text("Процесс авторизации отменен.")
     return ConversationHandler.END
 
-# Функция завершения
-def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text('Авторизация отменена.')
-    return ConversationHandler.END
+# Главная функция
+async def main():
+    application = Application.builder().token(TOKEN).build()
 
-# Функция для запуска бота в отдельном потоке
-def run_bot():
-    # Создаем и запускаем бота
-    updater = Updater(TOKEN)
-    dispatcher = updater.dispatcher
-
-    # Определяем ConversationHandler для обработки пошаговой авторизации
+    # Обработчики команд и состояний
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            LOGIN: [MessageHandler(Filters.text & ~Filters.command, login)],
-            PASSWORD: [MessageHandler(Filters.text & ~Filters.command, password)],
-            CAPTCHA: [MessageHandler(Filters.text & ~Filters.command, captcha)],
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    dispatcher.add_handler(conversation_handler)
-    updater.start_polling()
-    updater.idle()
+    application.add_handler(conversation_handler)
 
-# Запускаем бота в отдельном потоке
-bot_thread = threading.Thread(target=run_bot)
-bot_thread.start()
+    # Запуск бота
+    await application.run_polling()
+
+# Настроим asyncio для работы в Google Colab (если нужно)
+nest_asyncio.apply()
+
+# Запуск бота
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())
