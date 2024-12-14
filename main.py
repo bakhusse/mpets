@@ -9,6 +9,7 @@ import colorlog
 import os
 import re
 import time
+import random
 
 # Для работы с циклом событий внутри Google Colab
 nest_asyncio.apply()
@@ -70,19 +71,18 @@ def parse_cookies(cookies_data):
     
     return cookies_dict
 
-# Проверка на возможность действия (кормить, играть, выставка)
+# Проверка на возможность действия (кормить, играть)
 def check_action_links(page_html):
     actions = {
-        "food": "https://mpets.mobi/?action=food",
-        "play": "https://mpets.mobi/?action=play",
-        "show": "https://mpets.mobi/show"
+        "food": "https://mpets.mobi/?action=food&rand=",
+        "play": "https://mpets.mobi/?action=play&rand="
     }
     
     action_found = {}
     
     # Проверка на наличие картинок с гиперссылками
     for action, link in actions.items():
-        image_pattern = r'<a href="{}"><img'.format(link)
+        image_pattern = r'<a href="{}[\d]+"><img'.format(link)
         match = re.search(image_pattern, page_html)
         action_found[action] = bool(match)
     
@@ -121,24 +121,6 @@ def start_session_with_cookies(update, context, cookies_str):
     
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
 
-    # Перед авторизацией проверяем возможность действий (кормление, игра, выставка)
-    action_found = check_action_links(response.text)
-    logging.info(f"Доступные действия: {action_found}")
-    
-    if action_found["food"]:
-        logging.info("Можно покормить питомца, переходим по ссылке.")
-        session.get("https://mpets.mobi/?action=food")  # Переходим по ссылке кормления 6 раз
-        for _ in range(5):
-            session.get("https://mpets.mobi/?action=food")
-
-    if action_found["play"]:
-        logging.info("Можно поиграть с питомцем, переходим по ссылке.")
-        session.get("https://mpets.mobi/?action=play")
-
-    if action_found["show"]:
-        logging.info("Можно посетить выставку, переходим по ссылке.")
-        session.get("https://mpets.mobi/show")
-    
     return session, response
 
 # Функция для проверки наличия изображения на странице
@@ -191,17 +173,42 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
         return COOKIES
 
-    # Если авторизация прошла успешно, обновляем страницу
-    logging.info("Авторизация прошла успешно, выполняем обновление страницы.")
+    # Перед авторизацией проверяем возможность действий (кормление, игра)
+    action_found = check_action_links(response.text)
+    logging.info(f"Доступные действия: {action_found}")
+    
+    # Проверка возможности покормить питомца
+    if action_found["food"]:
+        logging.info("Можно покормить питомца, переходим по ссылке.")
+        # Генерируем случайное значение для rand и переходим по ссылке
+        rand_food = random.randint(1000, 9999)
+        session.get(f"https://mpets.mobi/?action=food&rand={rand_food}")  # Переходим по ссылке кормления 6 раз
+        for _ in range(5):
+            rand_food = random.randint(1000, 9999)
+            session.get(f"https://mpets.mobi/?action=food&rand={rand_food}")
+        await update.message.reply_text("Питомец покормлен!")
+
+    # Проверка возможности поиграть с питомцем
+    if action_found["play"]:
+        logging.info("Можно поиграть с питомцем, переходим по ссылке.")
+        # Генерируем случайное значение для rand и переходим по ссылке
+        rand_play = random.randint(1000, 9999)
+        session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
+        await update.message.reply_text("Питомец поиграл!")
+
+    # После проверок переходить к проверке сна
+    logging.info("Проверка состояния сна питомца.")
+    
+    # Выполняем запрос к странице с информацией о состоянии питомца
     response = session.get("https://mpets.mobi/welcome")  # Выполняем повторный запрос для обновления страницы
 
-    # Проверяем, что авторизация успешна
+    # Проверяем, что авторизация прошла успешно
     if response.status_code == 200:
         await update.message.reply_text("Авторизация успешна!")
 
         # Проверяем наличие изображения на обновленной странице
         if check_image_on_page(response.text):
-            await update.message.reply_text("Изображение найдено на странице, все в порядке!")
+            await update.message.reply_text("Изображение найдено на странице, питомец не спит!")
         
         # Пытаемся извлечь время ожидания
         wait_time = extract_wait_time(response.text)
