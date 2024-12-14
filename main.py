@@ -2,14 +2,14 @@ import threading
 import requests
 from io import BytesIO
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
 
 # Ваш токен Telegram-бота
-TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
+TOKEN = 'YOUR_BOT_TOKEN'
 
 # Инициализация сессии
 session = requests.Session()
@@ -34,19 +34,19 @@ def authorize(login, password, captcha_solution):
     return response
 
 # Обработка команды /start
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
+async def start(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
     return LOGIN
 
 # Обработка ввода логина
-def login(update: Update, context: CallbackContext):
+async def login(update: Update, context: CallbackContext) -> int:
     user_login = update.message.text
     context.user_data['login'] = user_login
-    update.message.reply_text('Теперь введи пароль:')
+    await update.message.reply_text('Теперь введи пароль:')
     return PASSWORD
 
 # Обработка ввода пароля
-def password(update: Update, context: CallbackContext):
+async def password(update: Update, context: CallbackContext) -> int:
     user_password = update.message.text
     context.user_data['password'] = user_password
 
@@ -54,13 +54,13 @@ def password(update: Update, context: CallbackContext):
     captcha_image = get_captcha()
 
     # Отправляем капчу пользователю
-    update.message.reply_text('Реши капчу:')
-    update.message.reply_photo(photo=BytesIO(captcha_image))
+    await update.message.reply_text('Реши капчу:')
+    await update.message.reply_photo(photo=BytesIO(captcha_image))
 
     return CAPTCHA
 
 # Обработка решения капчи
-def captcha(update: Update, context: CallbackContext):
+async def captcha(update: Update, context: CallbackContext) -> int:
     captcha_solution = update.message.text.strip()
 
     # Получаем логин и пароль из контекста
@@ -71,37 +71,35 @@ def captcha(update: Update, context: CallbackContext):
     response = authorize(login, password, captcha_solution)
 
     if response.ok and 'success' in response.text:  # Пример проверки успешной авторизации
-        update.message.reply_text('Авторизация успешна!')
+        await update.message.reply_text('Авторизация успешна!')
     else:
-        update.message.reply_text('Ошибка авторизации. Попробуй снова.')
+        await update.message.reply_text('Ошибка авторизации. Попробуй снова.')
 
     return ConversationHandler.END
 
 # Функция завершения
-def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text('Авторизация отменена.')
+async def cancel(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text('Авторизация отменена.')
     return ConversationHandler.END
 
 # Функция для запуска бота в отдельном потоке
 def run_bot():
     # Создаем и запускаем бота
-    updater = Updater(TOKEN)
-    dispatcher = updater.dispatcher
+    application = Application.builder().token(TOKEN).build()
 
     # Определяем ConversationHandler для обработки пошаговой авторизации
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            LOGIN: [MessageHandler(Filters.text & ~Filters.command, login)],
-            PASSWORD: [MessageHandler(Filters.text & ~Filters.command, password)],
-            CAPTCHA: [MessageHandler(Filters.text & ~Filters.command, captcha)],
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
-    dispatcher.add_handler(conversation_handler)
-    updater.start_polling()
-    updater.idle()
+    application.add_handler(conversation_handler)
+    application.run_polling()
 
 # Запускаем бота в отдельном потоке
 bot_thread = threading.Thread(target=run_bot)
