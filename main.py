@@ -98,17 +98,28 @@ def check_action_links(page_html):
     return action_found, food_link, play_link
 
 # Проверка поляны
-def check_glade(page_html):
+def check_glade(session):
+    url = "https://mpets.mobi/glade"
+    logging.info(f"Проверка поляны по ссылке: {url}")
+    response = session.get(url)
+
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить страницу поляны. Статус: {response.status_code}")
+        return None
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
     # Проверка на наличие шанса найти семена
-    if "Шанс найти семена" in page_html:
+    if "Шанс найти семена" in response.text:
+        logging.info("Шанс найти семена на поляне!")
         return True
     
-    # Если попытки кончились, найти время, когда можно будет снова попытаться
-    match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", page_html)
+    # Если попытки кончились, извлекаем время, когда можно будет снова попытаться
+    match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", response.text)
     if match:
         hours = int(match.group(1))
         minutes = int(match.group(2))
         total_seconds = (hours * 60 * 60) + (minutes * 60)
+        logging.info(f"Попытки закончились, нужно подождать {hours}ч {minutes}м.")
         return total_seconds
     return None
 
@@ -209,29 +220,35 @@ async def cookies(update: Update, context: CallbackContext) -> int:
                 play_url = base_url + play_link["href"]
                 session.get(play_url)
             await update.message.reply_text("Питомец поиграл.")
-
-        # Проверка поляны
-        logging.info("Проверка поляны.")
-        glade_time = check_glade(response.text)
-        if glade_time is not None:
-            await update.message.reply_text(f"Шанс найти семена не найден, нужно подождать {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
-            await asyncio.sleep(glade_time)
-            await update.message.reply_text("Время ожидания прошло. Ищем семена на поляне.")
-            for _ in range(6):
-                session.get(f"{base_url}/glade_dig")
-            await update.message.reply_text("Вы нашли семена на поляне!")
-
-        # Проверка прогулки
-        logging.info("Проверка прогулки.")
-        travel_time = check_travel(response.text)
-        if travel_time:
-            await update.message.reply_text(f"Питомец гуляет. Ожидайте {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
-            await asyncio.sleep(travel_time)
-        else:
-            logging.info("Питомец не гуляет, отправляем его на прогулку.")
-            for i in range(10, 0, -1):
-                session.get(f"{base_url}/go_travel?id={i}")
-            await update.message.reply_text("Питомец сходил на прогулку.")
+    
+    # Проверка поляны
+    glade_check = check_glade(session)
+    if glade_check is True:
+        # Если семена можно найти
+        logging.info("Переход по ссылке для поиска семян на поляне.")
+        for _ in range(6):  # Переход по ссылке поиска семян 6 раз
+            session.get(f"{base_url}/glade_dig")
+        await update.message.reply_text("Вы нашли семена на поляне!")
+    elif isinstance(glade_check, int):
+        # Если время для поиска семян еще не пришло
+        await update.message.reply_text(f"Невозможно найти семена на поляне. Ожидайте {glade_check // 3600}ч {(glade_check % 3600) // 60}м.")
+        await asyncio.sleep(glade_check)
+        await update.message.reply_text("Время ожидания прошло. Ищем семена на поляне.")
+        for _ in range(6):  # Переход по ссылке поиска семян 6 раз
+            session.get(f"{base_url}/glade_dig")
+        await update.message.reply_text("Вы нашли семена на поляне!")
+    
+    # Проверка прогулки
+    logging.info("Проверка прогулки.")
+    travel_time = check_travel(response.text)
+    if travel_time:
+        await update.message.reply_text(f"Питомец гуляет. Ожидайте {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
+        await asyncio.sleep(travel_time)
+    else:
+        logging.info("Питомец не гуляет, отправляем его на прогулку.")
+        for i in range(10, 0, -1):
+            session.get(f"{base_url}/go_travel?id={i}")
+        await update.message.reply_text("Питомец сходил на прогулку.")
 
     return ConversationHandler.END
 
