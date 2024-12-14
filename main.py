@@ -36,6 +36,7 @@ logging.getLogger().setLevel(logging.DEBUG)
 # Функция для создания новой сессии
 def create_new_session():
     session = requests.Session()
+    logging.info("Создание новой сессии.")
     return session
 
 # Функция для получения капчи с сайта
@@ -107,6 +108,7 @@ def authorize(session, login, password, captcha_solution):
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
+    logging.info("Начало процесса авторизации.")
     await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
     return LOGIN
 
@@ -114,6 +116,7 @@ async def start(update: Update, context: CallbackContext) -> int:
 async def login(update: Update, context: CallbackContext) -> int:
     user_login = update.message.text
     context.user_data['login'] = user_login
+    logging.info(f"Пользователь ввел логин: {user_login}")
     await update.message.reply_text('Теперь введи пароль:')
     return PASSWORD
 
@@ -121,6 +124,7 @@ async def login(update: Update, context: CallbackContext) -> int:
 async def password(update: Update, context: CallbackContext) -> int:
     user_password = update.message.text
     context.user_data['password'] = user_password
+    logging.info(f"Пользователь ввел пароль.")
 
     # Создаем новую сессию
     session = create_new_session()
@@ -141,6 +145,7 @@ async def password(update: Update, context: CallbackContext) -> int:
 # Обработка решения капчи
 async def captcha(update: Update, context: CallbackContext) -> int:
     captcha_solution = update.message.text.strip()
+    logging.info(f"Пользователь ввел капчу: {captcha_solution}")
 
     # Получаем логин и пароль из контекста
     login = context.user_data['login']
@@ -160,4 +165,46 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text(f'{result}. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные (логин, пароль)
         await update.message.reply_text('Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
-      
+        return ConversationHandler.END
+    elif result == "Неверная captcha":
+        await update.message.reply_text('Неверная captcha. Попробуйте снова.')
+        context.user_data.clear()  # Очищаем данные
+        await update.message.reply_text('Ошибка капчи. Для начала нового процесса авторизации используйте команду /start.')
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
+        context.user_data.clear()  # Очищаем данные
+        await update.message.reply_text(f'Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
+        return ConversationHandler.END
+
+# Функция завершения
+async def cancel(update: Update, context: CallbackContext) -> int:
+    await update.message.reply_text('Авторизация отменена.')
+    return ConversationHandler.END
+
+# Основная асинхронная функция для запуска бота
+async def main():
+    # Создаем и запускаем бота
+    application = Application.builder().token(TOKEN).build()
+
+    # Определяем ConversationHandler для обработки пошаговой авторизации
+    conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(conversation_handler)
+
+    # Запускаем бота
+    await application.run_polling()
+
+# Применяем nest_asyncio для работы в Google Colab
+nest_asyncio.apply()
+
+if __name__ == '__main__':
+    asyncio.run(main())
