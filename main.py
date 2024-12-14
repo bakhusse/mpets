@@ -128,17 +128,6 @@ def start_session_with_cookies(update, context, cookies_str):
 
     return session, response
 
-# Функция для извлечения времени ожидания из текста
-def extract_wait_time(page_html):
-    # Ищем шаблон "Проснется через: 18м 55с"
-    match = re.search(r"Проснется через: (\d+)м (\d+)с", page_html)
-    if match:
-        minutes = int(match.group(1))
-        seconds = int(match.group(2))
-        total_seconds = minutes * 60 + seconds
-        return total_seconds
-    return None
-
 # Функция для извлечения времени прогулки
 def extract_travel_time(page_html):
     # Ищем шаблон "До конца прогулки осталось 6ч 10м"
@@ -149,6 +138,13 @@ def extract_travel_time(page_html):
         total_seconds = (hours * 60 * 60) + (minutes * 60)
         return total_seconds
     return None
+
+# Проверка на завершение прогулки
+def check_travel_complete(page_html):
+    # Ищем текст "Прогулка завершена!"
+    if "Прогулка завершена!" in page_html:
+        return True
+    return False
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -224,37 +220,31 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         if travel_time:
             hours, remainder = divmod(travel_time, 3600)
             minutes, seconds = divmod(remainder, 60)
-            await update.message.reply_text(f"Прогулка началась! Время до конца прогулки: {hours}ч {minutes}м.")
-
-            # Ожидаем указанное время
+            await update.message.reply_text(f"До конца прогулки осталось {hours}ч {minutes}м.")
+            
+            # Таймер до окончания прогулки
             await asyncio.sleep(travel_time)
-
-            # Отправляем сообщение о завершении прогулки
-            await update.message.reply_text("Прогулка завершена! Питомец вернулся.")
+            await update.message.reply_text("Прогулка завершена!")
+            
+            # Переход по ссылке для прогулки с уменьшением времени
+            for i in range(10, 0, -1):
+                session.get(f"https://mpets.mobi/go_travel?id={i}")
         else:
-            await update.message.reply_text("Не удалось найти информацию о прогулке.")
+            await update.message.reply_text("Не удалось получить информацию о времени прогулки.")
     else:
-        await update.message.reply_text("Ошибка: Не удалось получить информацию о прогулке.")
-
+        await update.message.reply_text("Не удалось получить информацию о прогулке.")
+    
     return START
 
-# Главная функция
-async def main():
-    application = Application.builder().token(TOKEN).build()
+# Создание приложения бота
+application = Application.builder().token(TOKEN).build()
 
-    conversation_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            COOKIES: [MessageHandler(filters.TEXT, cookies)],
-            START: [MessageHandler(filters.TEXT, lambda update, context: update.message.reply_text("Добро пожаловать!"))],
-        },
-        fallbacks=[],
-    )
+# Хендлеры для команд
+application.add_handler(CommandHandler("start", start))
 
-    application.add_handler(conversation_handler)
+# Хендлер для получения cookies
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, cookies))
 
-    logging.info("Бот запущен.")
-    await application.run_polling()
-
+# Запуск бота
 if __name__ == '__main__':
-    asyncio.run(main())
+    application.run_polling()
