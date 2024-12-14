@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import logging
 import colorlog
 import os
+import re
 
 # Для работы с циклом событий внутри Google Colab
 nest_asyncio.apply()
@@ -98,6 +99,19 @@ def start_session_with_cookies(update, context, cookies_str):
 
     return session
 
+# Функция для проверки наличия изображения на странице
+def check_image_on_page(page_html):
+    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt=""/>
+    image_pattern = r'<img class="price_img" src="/view/image/icons/coin.png" alt="">'
+    match = re.search(image_pattern, page_html)
+
+    if match:
+        logging.info("Изображение найдено на странице.")
+        return True
+    else:
+        logging.error("Изображение не найдено на странице.")
+        return False
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
@@ -123,7 +137,21 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Попробуйте снова.")
         return COOKIES
 
-    await update.message.reply_text('Ты успешно авторизован через cookies! Давайте продолжим.')
+    # Проверяем, что авторизация успешна
+    welcome_url = "https://mpets.mobi/welcome"
+    response = session.get(welcome_url)
+
+    if response.status_code == 200:
+        await update.message.reply_text("Авторизация успешна!")
+        
+        # Проверяем наличие изображения на странице
+        if check_image_on_page(response.text):
+            await update.message.reply_text("Изображение найдено на странице, все в порядке!")
+        else:
+            await update.message.reply_text("Изображение не найдено на странице.")
+    else:
+        await update.message.reply_text("Ошибка: Не удалось авторизоваться. Пожалуйста, проверьте cookies и попробуйте снова.")
+
     return START
 
 # Главная функция
