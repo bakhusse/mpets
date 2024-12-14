@@ -90,11 +90,10 @@ def authorize(session, login, password, captcha_solution):
         elif "Неправильное Имя или Пароль" in response.text:
             logging.error("Неправильное имя или пароль.")
             return "Неправильное имя или пароль"
-        elif "error=" in response.url and "welcome" in response.url:
-            # Обрабатываем редирект с ошибкой авторизации
-            error_code = response.url.split('error=')[-1]
-            logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
-            return f"Ошибка авторизации, код ошибки: {error_code}"
+        elif "Oops! Your session is expired" in response.text:
+            # Если сессия истекла, перезапускаем процесс
+            logging.error("Сессия истекла. Перезапуск авторизации.")
+            return "Сессия истекла. Пожалуйста, начните с /start."
         elif "mpets.mobi" in response.url:
             # Если авторизация успешна, проверяем на редирект на главную страницу
             logging.info("Авторизация успешна! Переход на главную страницу.")
