@@ -8,6 +8,7 @@ import logging
 import colorlog
 import os
 import re
+import time
 
 # Для работы с циклом событий внутри Google Colab
 nest_asyncio.apply()
@@ -117,6 +118,18 @@ def check_image_on_page(page_html):
         logging.error("Изображение не найдено на странице.")
         return False
 
+# Функция для извлечения времени ожидания из текста
+def extract_wait_time(text):
+    # Ищем строку вида "Проснется через: 18м 55с"
+    match = re.search(r"Проснется через: (\d+)м (\d+)с", text)
+    if match:
+        minutes = int(match.group(1))
+        seconds = int(match.group(2))
+        total_seconds = minutes * 60 + seconds
+        logging.info(f"Время ожидания: {total_seconds} секунд.")
+        return total_seconds
+    return None
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
@@ -153,8 +166,23 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         # Проверяем наличие изображения на обновленной странице
         if check_image_on_page(response.text):
             await update.message.reply_text("Изображение найдено на странице, все в порядке!")
+        
+        # Пытаемся извлечь время ожидания
+        wait_time = extract_wait_time(response.text)
+        if wait_time:
+            # Устанавливаем таймер на извлеченное время
+            await update.message.reply_text(f"Таймер установлен на {wait_time} секунд.")
+
+            # Отсчитываем время и обновляем информацию каждую секунду
+            for remaining_time in range(wait_time, 0, -1):
+                minutes, seconds = divmod(remaining_time, 60)
+                time_left = f"{minutes}м {seconds}с"
+                await update.message.reply_text(f"Осталось времени: {time_left}")
+                await asyncio.sleep(1)  # Ожидаем 1 секунду
+
+            await update.message.reply_text("Таймер завершен!")
         else:
-            await update.message.reply_text("Изображение не найдено на странице.")
+            await update.message.reply_text("Не удалось найти время ожидания на странице.")
     else:
         await update.message.reply_text("Ошибка: Не удалось авторизоваться. Пожалуйста, проверьте cookies и попробуйте снова.")
 
