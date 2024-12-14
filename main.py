@@ -48,7 +48,16 @@ def authorize(login, password, captcha_solution):
 
     logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
 
-    return response
+    # Анализируем текст ответа, чтобы различать ошибки
+    if response.status_code == 200:
+        if "Неверная captcha" in response.text:
+            return "Неверная captcha"
+        elif "Неправильное Имя или Пароль" in response.text:
+            return "Неправильное имя или пароль"
+        else:
+            return "success"
+    else:
+        return f"Ошибка при авторизации, статус: {response.status_code}"
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -89,12 +98,17 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     password = context.user_data['password']
 
     # Пытаемся авторизовать пользователя
-    response = authorize(login, password, captcha_solution)
+    result = authorize(login, password, captcha_solution)
 
-    if response.ok and 'success' in response.text:  # Пример проверки успешной авторизации
+    # Обработка различных типов ошибок
+    if result == "success":
         await update.message.reply_text('Авторизация успешна!')
+    elif result == "Неверная captcha":
+        await update.message.reply_text('Ошибка: Неверная капча. Попробуйте снова.')
+    elif result == "Неправильное Имя или Пароль":
+        await update.message.reply_text('Ошибка: Неправильное имя или пароль. Попробуйте снова.')
     else:
-        await update.message.reply_text(f'Ошибка авторизации: {response.status_code}. Попробуй снова.')
+        await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
 
     return ConversationHandler.END
 
