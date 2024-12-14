@@ -7,6 +7,7 @@ import logging
 import asyncio
 import nest_asyncio
 import colorlog  # Для цветного логирования
+import re
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -39,32 +40,31 @@ def create_new_session():
     logging.info("Создание новой сессии.")
     return session
 
-# Функция для получения капчи с сайта
-def get_captcha(session):
-    url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
-    logging.info(f"Отправка запроса на получение капчи: {url}")
+# Функция для получения капчи с HTML страницы
+def get_captcha_url(page_html):
+    # Используем регулярное выражение для поиска URL капчи
+    captcha_pattern = r'<img style="width: 100%; display: block" src="(/captcha\?r=\d+)">'
+    match = re.search(captcha_pattern, page_html)
     
-    response = session.get(url)
-    logging.debug(f"Ответ на запрос капчи: {response.status_code}")
-    
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить капчу. Статус: {response.status_code}")
+    if match:
+        captcha_url = match.group(1)
+        logging.info(f"Найден URL капчи: {captcha_url}")
+        return 'https://mpets.mobi' + captcha_url  # Полный URL капчи
+    else:
+        logging.error("Капча не найдена на странице.")
         return None
+
+# Функция для получения изображения капчи
+def download_captcha_image(session, captcha_url):
+    logging.info(f"Загружаем капчу с URL: {captcha_url}")
     
-    captcha_image = response.content
-    logging.info(f"Капча получена, размер: {len(captcha_image)} байт")
+    response = session.get(captcha_url)
     
-    # Логирование содержимого капчи (для диагностики)
-    logging.debug(f"Содержимое капчи (первые 100 байт): {captcha_image[:100]}")
-    
-    try:
-        image = Image.open(BytesIO(captcha_image))
-        img_byte_arr = BytesIO()
-        image.save(img_byte_arr, format='PNG')  # Сохраняем в PNG
-        img_byte_arr.seek(0)  # Возвращаем указатель в начало
-        return img_byte_arr
-    except Exception as e:
-        logging.error(f"Не удалось обработать капчу: {e}")
+    if response.status_code == 200:
+        logging.info(f"Капча успешно загружена. Размер: {len(response.content)} байт.")
+        return BytesIO(response.content)
+    else:
+        logging.error(f"Не удалось загрузить капчу. Статус: {response.status_code}")
         return None
 
 # Функция для авторизации с капчей
@@ -147,11 +147,26 @@ async def password(update: Update, context: CallbackContext) -> int:
     # Получаем сессию из контекста
     session = context.user_data['session']
 
-    # Отправляем запрос на сайт для получения капчи
-    captcha_image = get_captcha(session)
+    # Получаем HTML страницы для извлечения URL капчи
+    welcome_url = "https://mpets.mobi/welcome"
+    response = session.get(welcome_url)
+
+    if response.status_code != 200:
+        await update.message.reply_text("Не удалось получить страницу с капчей. Попробуйте позже.")
+        return ConversationHandler.END
+
+    # Извлекаем URL капчи
+    captcha_url = get_captcha_url(response.text)
+
+    if captcha_url is None:
+        await update.message.reply_text("Не удалось найти капчу. Попробуйте позже.")
+        return ConversationHandler.END
+
+    # Скачиваем изображение капчи
+    captcha_image = download_captcha_image(session, captcha_url)
 
     if captcha_image is None:
-        await update.message.reply_text("Не удалось получить капчу. Попробуйте позже.")
+        await update.message.reply_text("Не удалось загрузить капчу. Попробуйте позже.")
         return ConversationHandler.END
 
     # Отправляем капчу пользователю
