@@ -9,7 +9,7 @@ import logging
 LOGIN, PASSWORD, CAPTCHA = range(3)
 
 # Ваш токен Telegram-бота
-TOKEN = 'YOUR_BOT_TOKEN'
+TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
 
 # Инициализация сессии
 session = requests.Session()
