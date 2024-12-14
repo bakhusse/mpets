@@ -86,24 +86,24 @@ def authorize(session, login, password, captcha_solution):
     if response.status_code == 200:
         if "Неверная captcha" in response.text:
             logging.error("Неверная капча.")
-            return "Неверная captcha"
+            return "Неверная captcha", None
         elif "Неправильное Имя или Пароль" in response.text:
             logging.error("Неправильное имя или пароль.")
-            return "Неправильное имя или пароль"
+            return "Неправильное имя или пароль", None
         elif "Oops! Your session is expired" in response.text:
             # Если сессия истекла, перезапускаем процесс
             logging.error("Сессия истекла. Перезапуск авторизации.")
-            return "Сессия истекла. Пожалуйста, начните с /start."
+            return "Сессия истекла. Пожалуйста, начните с /start.", None
         elif "mpets.mobi" in response.url:
             # Если авторизация успешна, проверяем на редирект на главную страницу
             logging.info("Авторизация успешна! Переход на главную страницу.")
             return "success", response.text  # Возвращаем HTML-страницу
         else:
             logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
-            return "Неизвестная ошибка авторизации"
+            return "Неизвестная ошибка авторизации", None
     else:
         logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
-        return f"Ошибка при авторизации, статус: {response.status_code}"
+        return f"Ошибка при авторизации, статус: {response.status_code}", None
 
 # Функция для проверки наличия изображения на странице
 def check_image_on_page(page_html):
