@@ -43,7 +43,9 @@ def create_new_session():
 def get_captcha(session):
     url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
     logging.info(f"Отправка запроса на получение капчи: {url}")
+    
     response = session.get(url)
+    logging.debug(f"Ответ на запрос капчи: {response.status_code}")
     
     if response.status_code != 200:
         logging.error(f"Не удалось получить капчу. Статус: {response.status_code}")
@@ -52,7 +54,9 @@ def get_captcha(session):
     captcha_image = response.content
     logging.info(f"Капча получена, размер: {len(captcha_image)} байт")
     
-    # Попробуем преобразовать изображение в формат, который Telegram поддерживает
+    # Логирование содержимого капчи (для диагностики)
+    logging.debug(f"Содержимое капчи (первые 100 байт): {captcha_image[:100]}")
+    
     try:
         image = Image.open(BytesIO(captcha_image))
         img_byte_arr = BytesIO()
@@ -171,9 +175,8 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     # Пытаемся авторизовать пользователя
     result, page_html = authorize(session, login, password, captcha_solution)
 
-    # Обработка различных типов ошибок
     if result == "success":
-        await update.message.reply_text('Авторизация успешна! Перехожу на главную страницу.')
+        await update.message.reply_text('Авторизация успешна! Перехожу на главную страницу...')
         return ConversationHandler.END
     elif "Ошибка авторизации" in result:  # Если ошибка авторизации
         await update.message.reply_text(result)
@@ -186,7 +189,6 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 async def main():
     application = Application.builder().token(TOKEN).build()
 
-    # Обработчики команд и состояний
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
