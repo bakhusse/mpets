@@ -131,15 +131,23 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         return ConversationHandler.END
     elif "Ошибка авторизации" in result:  # Если ошибка авторизации
         await update.message.reply_text(f'{result}. Попробуйте снова.')
+        context.user_data.clear()  # Очищаем данные (логин, пароль)
+        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
         return LOGIN  # Попросить ввести логин снова
     elif result == "Неверная captcha":
         await update.message.reply_text('Ошибка: Неверная капча. Попробуйте снова.')
+        context.user_data.clear()  # Очищаем данные
+        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
         return LOGIN  # Попросить ввести логин снова
     elif result == "Неправильное Имя или Пароль":
         await update.message.reply_text('Ошибка: Неправильное имя или пароль. Попробуйте снова.')
+        context.user_data.clear()  # Очищаем данные
+        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
         return LOGIN  # Попросить ввести логин снова
     else:
         await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
+        context.user_data.clear()  # Очищаем данные
+        await update.message.reply_text('Возвращаемся на страницу логина. Пожалуйста, введите логин снова.')
         return LOGIN  # Попросить ввести логин снова
 
 # Функция завершения
