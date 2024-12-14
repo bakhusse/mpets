@@ -190,14 +190,19 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         logging.info("Питомец не спит. Проверяем возможность кормления и игры.")
         action_found, food_link, play_link = check_action_links(response.text)
         
+        # Используем полный URL для перехода по ссылкам
+        base_url = "https://mpets.mobi"
+        
         if action_found["food"]:
             logging.info("Переход по ссылке кормления.")
-            session.get(food_link["href"])
+            food_url = base_url + food_link["href"]
+            session.get(food_url)
             await update.message.reply_text("Питомец покормлен.")
         
         if action_found["play"]:
             logging.info("Переход по ссылке игры.")
-            session.get(play_link["href"])
+            play_url = base_url + play_link["href"]
+            session.get(play_url)
             await update.message.reply_text("Питомец поиграл.")
 
         # Проверка поляны
@@ -219,18 +224,17 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         if travel_time:
             await update.message.reply_text(f"Питомец гуляет. Ожидайте завершения прогулки через {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
             await asyncio.sleep(travel_time)
-            await update.message.reply_text("Питомец завершил прогулку. Отправляем его гулять снова.")
-
+            await update.message.reply_text("Питомец завершил прогулку. Перехожу на прогулку!")
             for i in range(10, 0, -1):
                 session.get(f"https://mpets.mobi/go_travel?id={i}")
-            await update.message.reply_text("Питомец снова отправился на прогулку!")
+            await update.message.reply_text("Питомец сходил на прогулку.")
 
     return ConversationHandler.END
 
-# Основная часть с бота и настройками
+
 def main():
     application = Application.builder().token(TOKEN).build()
-    
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
