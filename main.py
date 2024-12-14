@@ -146,6 +146,12 @@ def check_travel_complete(page_html):
         return True
     return False
 
+# Проверка наличия семян на поляне
+def check_seeds_found(page_html):
+    if "Шанс найти семена" in page_html:
+        return True
+    return False
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
@@ -216,24 +222,23 @@ async def cookies(update: Update, context: CallbackContext) -> int:
 
     # Проверяем, что прогулка активна
     if response.status_code == 200:
-        travel_time = extract_travel_time(response.text)
-        if travel_time:
-            hours, remainder = divmod(travel_time, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            await update.message.reply_text(f"До конца прогулки осталось {hours}ч {minutes}м.")
-            
-            # Таймер до окончания прогулки
-            await asyncio.sleep(travel_time)
+        if check_travel_complete(response.text):
             await update.message.reply_text("Прогулка завершена!")
-            
-            # Переход по ссылке для прогулки с уменьшением времени
-            for i in range(10, 0, -1):
-                session.get(f"https://mpets.mobi/go_travel?id={i}")
         else:
-            await update.message.reply_text("Не удалось получить информацию о времени прогулки.")
-    else:
-        await update.message.reply_text("Не удалось получить информацию о прогулке.")
+            travel_time = extract_travel_time(response.text)
+            if travel_time:
+                await update.message.reply_text(f"До конца прогулки осталось {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
+                await asyncio.sleep(travel_time)
+                await update.message.reply_text("Прогулка завершена!")
     
+    # Проверка на наличие семян на поляне
+    response = session.get("https://mpets.mobi/glade")  # Переходим на полянку для поиска семян
+    if check_seeds_found(response.text):
+        logging.info("Шанс найти семена найден!")
+        for _ in range(6):
+            session.get("https://mpets.mobi/glade_dig")
+        await update.message.reply_text("Семена найдены!")
+
     return START
 
 # Создание приложения бота
