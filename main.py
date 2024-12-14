@@ -9,6 +9,7 @@ import colorlog
 import os
 import re
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 # Для работы с циклом событий внутри Google Colab
 nest_asyncio.apply()
@@ -84,6 +85,12 @@ def check_action_links(page_html):
     if not action_found["play"]:
         logging.warning("Не найдено действие для игры.")
     
+    # Если ссылки найдены, делаем их абсолютными
+    if food_link:
+        food_link['href'] = urljoin("https://mpets.mobi", food_link['href'])
+    if play_link:
+        play_link['href'] = urljoin("https://mpets.mobi", play_link['href'])
+
     return action_found, food_link, play_link
 
 # Проверка поляны
@@ -177,69 +184,55 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
         return COOKIES
 
-    # Логируем ответ для отладки
-    logging.info(f"Ответ страницы: {response.text[:1000]}...")  # Логируем первые 1000 символов
-
-    # После авторизации отправляем уведомление
     await update.message.reply_text("Авторизация успешна! Теперь выполняем проверки.")
 
-    # Проверяем, спит ли питомец
+    # Проверка времени сна питомца
     logging.info("Проверка состояния сна питомца.")
     sleep_time = extract_sleep_time(response.text)
     
     if sleep_time:
-        logging.info(f"Питомец спит, проснется через {sleep_time // 3600}ч {(sleep_time % 3600) // 60}м.")
         await update.message.reply_text(f"Питомец спит. Проснется через {sleep_time // 3600}ч {(sleep_time % 3600) // 60}м.")
-        
-        # Устанавливаем таймер
         await asyncio.sleep(sleep_time)
         await update.message.reply_text("Питомец проснулся!")
-
     else:
-        # Если питомец не спит, выполняем действия
+        # Питомец не спит, выполняем другие действия
+        logging.info("Питомец не спит. Проверяем возможность кормления и игры.")
         action_found, food_link, play_link = check_action_links(response.text)
-
-        if action_found["food"]:
-            logging.info("Кормим питомца.")
-            session.get(food_link["href"])
-            await update.message.reply_text("Питомец накормлен!")
-
-        if action_found["play"]:
-            logging.info("Играем с питомцем.")
-            session.get(play_link["href"])
-            await update.message.reply_text("Питомец поиграл!")
-
-        # Если есть ссылки для выставки, можно добавить код для отправки питомца на выставку
-
-    # Проверка поляны
-    logging.info("Проверка поляны.")
-    glade_time = check_glade(response.text)
-    if glade_time is not None:
-        await update.message.reply_text(f"Шанс найти семена не найден. Следующая попытка через {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
-        await asyncio.sleep(glade_time)
-        await update.message.reply_text("Попытка поиска семян снова.")
-    elif "Шанс найти семена" in response.text:
-        logging.info("Шанс найти семена найден, начинаем копать.")
-        # Переходим по ссылке 6 раз
-        for _ in range(6):
-            session.get("https://mpets.mobi/glade_dig")
-        await update.message.reply_text("Вы нашли семена!")
-
-    # Проверка прогулки
-    logging.info("Проверка прогулки.")
-    travel_time = check_travel(response.text)
-    if travel_time:
-        logging.info(f"Питомец гуляет, осталось {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
-        await update.message.reply_text(f"Питомец гуляет. Ожидайте завершения прогулки через {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
         
-        # Устанавливаем таймер для завершения прогулки
-        await asyncio.sleep(travel_time)
-        await update.message.reply_text("Питомец завершил прогулку. Отправляем его гулять снова.")
+        if action_found["food"]:
+            logging.info("Переход по ссылке кормления.")
+            session.get(food_link["href"])
+            await update.message.reply_text("Питомец покормлен.")
+        
+        if action_found["play"]:
+            logging.info("Переход по ссылке игры.")
+            session.get(play_link["href"])
+            await update.message.reply_text("Питомец поиграл.")
 
-        # Переходим по ссылке на прогулку (с понижением от 10 до 1)
-        for i in range(10, 0, -1):
-            session.get(f"https://mpets.mobi/go_travel?id={i}")
-        await update.message.reply_text("Питомец снова отправился на прогулку!")
+        # Проверка поляны
+        logging.info("Проверка поляны.")
+        glade_time = check_glade(response.text)
+        if glade_time is not None:
+            await update.message.reply_text(f"Шанс найти семена не найден. Следующая попытка через {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
+            await asyncio.sleep(glade_time)
+            await update.message.reply_text("Попытка поиска семян снова.")
+        elif "Шанс найти семена" in response.text:
+            logging.info("Шанс найти семена найден, начинаем копать.")
+            for _ in range(6):
+                session.get("https://mpets.mobi/glade_dig")
+            await update.message.reply_text("Вы нашли семена!")
+
+        # Проверка прогулки
+        logging.info("Проверка прогулки.")
+        travel_time = check_travel(response.text)
+        if travel_time:
+            await update.message.reply_text(f"Питомец гуляет. Ожидайте завершения прогулки через {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
+            await asyncio.sleep(travel_time)
+            await update.message.reply_text("Питомец завершил прогулку. Отправляем его гулять снова.")
+
+            for i in range(10, 0, -1):
+                session.get(f"https://mpets.mobi/go_travel?id={i}")
+            await update.message.reply_text("Питомец снова отправился на прогулку!")
 
     return ConversationHandler.END
 
