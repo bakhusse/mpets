@@ -8,7 +8,6 @@ import logging
 import colorlog
 import os
 import re
-import time
 import random
 from bs4 import BeautifulSoup
 
@@ -140,6 +139,17 @@ def extract_wait_time(page_html):
         return total_seconds
     return None
 
+# Функция для извлечения времени прогулки
+def extract_travel_time(page_html):
+    # Ищем шаблон "До конца прогулки осталось 6ч 10м"
+    match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", page_html)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        total_seconds = (hours * 60 * 60) + (minutes * 60)
+        return total_seconds
+    return None
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
@@ -188,36 +198,43 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         # Генерируем случайное значение для rand и переходим по ссылке
         rand_play = random.randint(1000, 9999)
         session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
+        for _ in range(5):
+            rand_play = random.randint(1000, 9999)
+            session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
         await update.message.reply_text("Питомец поиграл!")
     else:
         await update.message.reply_text("Действие для игры не найдено.")
-
-    # После проверок переходить к проверке сна
-    logging.info("Проверка состояния сна питомца.")
     
-    # Выполняем запрос к странице с информацией о состоянии питомца
-    response = session.get("https://mpets.mobi/welcome")  # Выполняем повторный запрос для обновления страницы
+    # Переход по ссылке выставки 6 раз
+    logging.info("Переход по ссылке выставки.")
+    for _ in range(6):
+        session.get("https://mpets.mobi/show")
+    
+    await update.message.reply_text("Выставка посещена!")
 
-    # Проверяем, что авторизация прошла успешно
+    # После проверок проверка на прогулку
+    logging.info("Проверка состояния прогулки питомца.")
+    
+    # Выполняем запрос к странице с информацией о прогулке
+    response = session.get("https://mpets.mobi/travel")  # Выполняем запрос для получения времени прогулки
+
+    # Проверяем, что прогулка активна
     if response.status_code == 200:
-        await update.message.reply_text("Авторизация успешна!")
-
-        # Пытаемся извлечь время ожидания
-        wait_time = extract_wait_time(response.text)
-        if wait_time:
-            # Устанавливаем таймер на извлеченное время
-            minutes, seconds = divmod(wait_time, 60)
-            await update.message.reply_text(f"Таймер установлен на {minutes}м {seconds}с.")
+        travel_time = extract_travel_time(response.text)
+        if travel_time:
+            hours, remainder = divmod(travel_time, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            await update.message.reply_text(f"Прогулка началась! Время до конца прогулки: {hours}ч {minutes}м.")
 
             # Ожидаем указанное время
-            await asyncio.sleep(wait_time)
+            await asyncio.sleep(travel_time)
 
-            # Отправляем сообщение о завершении таймера
-            await update.message.reply_text("Проснулся! Таймер завершен.")
+            # Отправляем сообщение о завершении прогулки
+            await update.message.reply_text("Прогулка завершена! Питомец вернулся.")
         else:
-            await update.message.reply_text("Не удалось найти время ожидания на странице.")
+            await update.message.reply_text("Не удалось найти информацию о прогулке.")
     else:
-        await update.message.reply_text("Ошибка: Не удалось авторизоваться. Пожалуйста, проверьте cookies и попробуйте снова.")
+        await update.message.reply_text("Ошибка: Не удалось получить информацию о прогулке.")
 
     return START
 
