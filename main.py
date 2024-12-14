@@ -118,20 +118,33 @@ def check_image_on_page(page_html):
         logging.error("Изображение не найдено на странице.")
         return False
 
+# Эмуляция сессии через cookies и необходимые шаги
+def start_session(update, context):
+    session = create_new_session()
+    context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
+
+    # Выполняем запрос на страницу welcome и сохраняем cookies
+    welcome_url = "https://mpets.mobi/welcome"
+    logging.info(f"Запрос на страницу {welcome_url}")
+    response = session.get(welcome_url)
+    
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить страницу welcome. Статус: {response.status_code}")
+        return None
+    # Сохраняем cookies для дальнейших запросов
+    logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
+    
+    return session
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации.")
     
     # Создаем новую сессию сразу при старте
-    session = create_new_session()
-    context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
+    session = start_session(update, context)
     
-    # Переходим на страницу welcome для получения сессии
-    response = session.get('https://mpets.mobi/welcome')
-    logging.info(f"Страница welcome открыта, статус: {response.status_code}")
-    
-    if response.status_code != 200:
-        await update.message.reply_text("Не удалось открыть страницу для авторизации.")
+    if session is None:
+        await update.message.reply_text("Не удалось начать сессию. Попробуйте снова.")
         return ConversationHandler.END
 
     await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
