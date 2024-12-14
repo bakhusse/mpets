@@ -1,14 +1,11 @@
-import pyautogui
 import requests
 from io import BytesIO
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
-import asyncio
-import nest_asyncio
 import colorlog  # Для цветного логирования
 import re
-from PIL import Image
+from PIL import Image  # Для работы с изображениями
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -54,11 +51,9 @@ def get_captcha(session):
     captcha_image = response.content
     logging.info(f"Капча получена, размер: {len(captcha_image)} байт")
     
-    # Попробуем преобразовать изображение в формат, который Telegram поддерживает
+    # Преобразуем изображение в формат, который Telegram поддерживает
     try:
-        image = Image.open(BytesIO(captcha_image))
-        img_byte_arr = BytesIO()
-        image.save(img_byte_arr, format='PNG')  # Сохраняем в PNG
+        img_byte_arr = BytesIO(captcha_image)
         img_byte_arr.seek(0)  # Возвращаем указатель в начало
         return img_byte_arr
     except Exception as e:
@@ -138,18 +133,10 @@ def start_session(update, context):
 
     return session
 
-# Функция для создания скриншота
-def take_screenshot(filename="screenshot.png"):
-    screenshot = pyautogui.screenshot()  # Делаем скриншот
-    screenshot.save(filename)  # Сохраняем скриншот как файл
-    logging.info(f"Скриншот сохранен как {filename}")
-    return filename
-
-# Функция для отправки скриншота в Telegram
-async def send_screenshot(update: Update, context: CallbackContext, screenshot_filename):
-    with open(screenshot_filename, "rb") as file:
-        await update.message.reply_photo(photo=file)
-    logging.info("Скриншот отправлен в Telegram.")
+# Функция для отправки капчи в Telegram
+async def send_captcha(update: Update, context: CallbackContext, captcha_image):
+    await update.message.reply_photo(photo=captcha_image)
+    logging.info("Капча отправлена в Telegram.")
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -191,7 +178,7 @@ async def password(update: Update, context: CallbackContext) -> int:
 
     # Отправляем капчу пользователю
     await update.message.reply_text('Реши капчу:')
-    await update.message.reply_photo(photo=captcha_image)
+    await send_captcha(update, context, captcha_image)
 
     return CAPTCHA
 
@@ -210,12 +197,10 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     # Пытаемся авторизовать пользователя
     result, page_html = authorize(session, login, password, captcha_solution)
 
-    # Если капча неверная, делаем скриншот
     if result == "Неверная captcha":
-        screenshot_filename = take_screenshot("captcha_error.png")
-        await send_screenshot(update, context, screenshot_filename)
-    
-    # Обработка различных типов ошибок
+        await update.message.reply_text("Неверная капча, попробуйте снова.")
+        return CAPTCHA
+
     if result == "success":
         # Проверяем наличие изображения на странице
         if check_image_on_page(page_html):
@@ -223,18 +208,12 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         else:
             await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
         return ConversationHandler.END
-    elif "Ошибка авторизации" in result:  # Если ошибка авторизации
-        await update.message.reply_text(result)
-        return ConversationHandler.END
     else:
         await update.message.reply_text(f"Ошибка: {result}. Попробуйте снова.")
         return ConversationHandler.END
 
 # Главная функция
 async def main():
-    # Используем nest_asyncio для обработки циклов событий в Jupyter
-    nest_asyncio.apply()
-
     application = Application.builder().token(TOKEN).build()
 
     conversation_handler = ConversationHandler(
@@ -253,4 +232,5 @@ async def main():
     await application.run_polling()
 
 if __name__ == '__main__':
+    import asyncio
     asyncio.run(main())
