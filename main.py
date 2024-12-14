@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import logging
 import asyncio
 import nest_asyncio
-import colorlog  # Импортируем библиотеку для цветного логирования
+import colorlog  # Для цветного логирования
 
 # Состояния для ConversationHandler
 LOGIN, PASSWORD, CAPTCHA = range(3)
@@ -95,9 +95,9 @@ def authorize(session, login, password, captcha_solution):
             logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
             return f"Ошибка авторизации, код ошибки: {error_code}"
         else:
-            # Проверяем, если редирект на главную страницу после успешной авторизации
-            if "welcome" in response.url:
-                logging.info("Авторизация успешна!")
+            # Если авторизация успешна, проверяем на редирект на главную страницу
+            if "mpets.mobi" in response.url:
+                logging.info("Авторизация успешна! Переход на главную страницу.")
                 return "success"
             else:
                 logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
@@ -164,7 +164,7 @@ async def captcha(update: Update, context: CallbackContext) -> int:
 
     # Обработка различных типов ошибок
     if result == "success":
-        await update.message.reply_text('Авторизация успешна!')
+        await update.message.reply_text('Авторизация успешна! Теперь вы на главной странице сайта: https://mpets.mobi/')
         return ConversationHandler.END
     elif "Ошибка авторизации" in result:  # Если ошибка авторизации
         await update.message.reply_text(f'{result}. Попробуйте снова.')
@@ -192,24 +192,25 @@ async def main():
     # Создаем и запускаем бота
     application = Application.builder().token(TOKEN).build()
 
-    # Определяем ConversationHandler для обработки пошаговой авторизации
+    # Устанавливаем ConversationHandler
     conversation_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler('start', start)],  # Команда /start
         states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
-            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
-            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.Command(), login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.Command(), password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.Command(), captcha)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[CommandHandler('cancel', cancel)]
     )
 
     application.add_handler(conversation_handler)
 
-    # Запускаем бота
+    # Запуск бота
     await application.run_polling()
 
-# Применяем nest_asyncio для работы в Google Colab
+# Настроим asyncio для работы в Google Colab
 nest_asyncio.apply()
 
+# Запуск бота
 if __name__ == '__main__':
     asyncio.run(main())
