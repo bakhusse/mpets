@@ -109,6 +109,11 @@ def authorize(session, login, password, captcha_solution):
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации.")
+    
+    # Создаем новую сессию сразу при старте
+    session = create_new_session()
+    context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
+    
     await update.message.reply_text('Привет! Давай начнем авторизацию. Введи логин:')
     return LOGIN
 
@@ -126,8 +131,8 @@ async def password(update: Update, context: CallbackContext) -> int:
     context.user_data['password'] = user_password
     logging.info(f"Пользователь ввел пароль.")
 
-    # Создаем новую сессию
-    session = create_new_session()
+    # Получаем сессию из контекста
+    session = context.user_data['session']
 
     # Отправляем запрос на сайт для получения капчи
     captcha_image = get_captcha(session)
@@ -151,8 +156,8 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     login = context.user_data['login']
     password = context.user_data['password']
 
-    # Создаем новую сессию
-    session = create_new_session()
+    # Получаем сессию из контекста
+    session = context.user_data['session']
 
     # Пытаемся авторизовать пользователя
     result = authorize(session, login, password, captcha_solution)
