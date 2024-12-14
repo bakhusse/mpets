@@ -188,6 +188,9 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
         return COOKIES
 
+    # После авторизации отправляем уведомление
+    await update.message.reply_text("Авторизация успешна! Теперь выполняем проверки.")
+
     # Проверяем, спит ли питомец
     logging.info("Проверка состояния сна питомца.")
     sleep_time = extract_sleep_time(response.text)
@@ -218,7 +221,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         logging.info("Можно поиграть с питомцем, переходим по ссылке.")
         # Генерируем случайное значение для rand и переходим по ссылке
         rand_play = random.randint(1000, 9999)
-        session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
+        session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")  # Переходим по ссылке игры 6 раз
         for _ in range(5):
             rand_play = random.randint(1000, 9999)
             session.get(f"https://mpets.mobi/?action=play&rand={rand_play}")
@@ -234,23 +237,11 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Выставка не прошла, питомец уснул.")
         return COOKIES
 
-    # Проверяем поляны на семена
-    if check_seeds_found(response.text):
-        await update.message.reply_text("Шанс найти семена найден. Переходим по ссылке.")
-        for _ in range(6):
-            session.get("https://mpets.mobi/glade_dig")
-
-    # Проверяем прогулки
-    if "Ваш питомец гуляет" in response.text:
-        # Извлекаем время прогулки
-        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
-        if match:
-            hours = int(match.group(1))
-            minutes = int(match.group(2))
-            total_seconds = (hours * 60 * 60) + (minutes * 60)
-            await update.message.reply_text(f"Питомец гуляет. Время до конца прогулки: {hours}ч {minutes}м.")
-            await asyncio.sleep(total_seconds)
-            await update.message.reply_text("Питомец завершил прогулку!")
+    # Проверка победы на выставке
+    if "Поздравляем! Вы победили!" in response.text:
+        await update.message.reply_text("Поздравляем! Вы победили на выставке!")
+    elif re.search(r"Вы заняли \d+ место", response.text):
+        await update.message.reply_text("Вы заняли место на выставке!")
 
     return ConversationHandler.END
 
