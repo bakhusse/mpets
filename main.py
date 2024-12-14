@@ -50,10 +50,12 @@ def authorize(login, password, captcha_solution):
 
     # Проверка на ошибку авторизации
     if response.status_code == 200:
-        # Проверяем, содержит ли ответ ошибку
+        # Проверка на ошибки капчи или логина/пароля
         if "Неверная captcha" in response.text:
+            logging.error("Неверная капча.")
             return "Неверная captcha"
         elif "Неправильное Имя или Пароль" in response.text:
+            logging.error("Неправильное имя или пароль.")
             return "Неправильное имя или пароль"
         elif "error=" in response.url and "welcome" in response.url:
             # Обрабатываем редирект с ошибкой авторизации
@@ -61,8 +63,14 @@ def authorize(login, password, captcha_solution):
             logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
             return f"Ошибка авторизации, код ошибки: {error_code}"
         else:
-            return "success"
+            # Проверяем, если редирект на главную страницу после успешной авторизации
+            if "welcome" in response.url:
+                return "success"
+            else:
+                logging.error("Неизвестная ошибка авторизации.")
+                return "Неизвестная ошибка авторизации"
     else:
+        logging.error(f"Ошибка при авторизации, статус: {response.status_code}")
         return f"Ошибка при авторизации, статус: {response.status_code}"
 
 # Обработка команды /start
