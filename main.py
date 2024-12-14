@@ -103,6 +103,10 @@ async def main():
     # Запускаем бота
     await application.run_polling()
 
-# Запускаем бота с помощью текущего цикла событий
-loop = asyncio.get_event_loop()
-loop.create_task(main())
+# Запускаем бота через await в Google Colab
+if __name__ == "__main__":
+    import nest_asyncio
+    nest_asyncio.apply()  # Это позволяет запускать асинхронный код в уже существующем цикле событий
+
+    # Теперь запускаем бота
+    asyncio.get_event_loop().run_until_complete(main())
