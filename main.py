@@ -74,7 +74,7 @@ def extract_sleep_time(page_html):
     Если питомец спит, возвращает время в секундах.
     Если питомец не спит, возвращает None.
     """
-    match = re.search(r"Ваш питомец спит и проснется через (\d+)ч (\d+)м", page_html)
+    match = re.search(r"Проснется через (\d+)ч (\d+)м", page_html)
     
     if match:
         hours = int(match.group(1))
@@ -218,20 +218,17 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         logging.info("Питомец не спит. Проверяем возможность кормления и игры.")
         action_found, food_link, play_link = check_action_links(response.text)
         
-        # Используем полный URL для перехода
-        base_url = "https://mpets.mobi"
-        
         if action_found["food"]:
             logging.info("Переход по ссылке кормления.")
             for _ in range(6):
-                food_url = base_url + food_link["href"]
+                food_url = "https://mpets.mobi" + food_link["href"]
                 session.get(food_url)
             await update.message.reply_text("Питомец поел.")
 
         if action_found["play"]:
             logging.info("Переход по ссылке игры.")
             for _ in range(6):
-                play_url = base_url + play_link["href"]
+                play_url = "https://mpets.mobi" + play_link["href"]
                 session.get(play_url)
             await update.message.reply_text("Питомец поиграл.")
 
@@ -240,14 +237,14 @@ async def cookies(update: Update, context: CallbackContext) -> int:
     if glade_check is True:
         logging.info("Переход по ссылке для поиска семян на поляне.")
         for _ in range(6):  # Переход по ссылке поиска семян 6 раз
-            session.get(f"{base_url}/glade_dig")
+            session.get(f"https://mpets.mobi/glade_dig")
         await update.message.reply_text("Вы нашли семена на поляне!")
     elif isinstance(glade_check, int):
         await update.message.reply_text(f"Невозможно найти семена на поляне. Ожидайте {glade_check // 3600}ч {(glade_check % 3600) // 60}м.")
         await asyncio.sleep(glade_check)
         await update.message.reply_text("Время ожидания прошло. Ищем семена на поляне.")
         for _ in range(6):  # Переход по ссылке поиска семян 6 раз
-            session.get(f"{base_url}/glade_dig")
+            session.get(f"https://mpets.mobi/glade_dig")
         await update.message.reply_text("Вы нашли семена на поляне!")
 
     # Проверка прогулки
@@ -259,7 +256,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
     else:
         logging.info("Питомец не гуляет, отправляем его на прогулку.")
         for i in range(10, 0, -1):
-            session.get(f"{base_url}/go_travel?id={i}")
+            session.get(f"https://mpets.mobi/go_travel?id={i}")
         await update.message.reply_text("Питомец сходил на прогулку.")
 
     return ConversationHandler.END
