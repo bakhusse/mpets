@@ -53,7 +53,6 @@ def create_new_session():
 def parse_cookies(cookies_data):
     cookies_dict = {}
     
-    # Если переданы данные в формате JSON
     if isinstance(cookies_data, list):
         for cookie in cookies_data:
             name = cookie.get("name")
@@ -61,7 +60,6 @@ def parse_cookies(cookies_data):
             if name and value:
                 cookies_dict[name] = value
     
-    # Если переданы данные в строковом формате
     elif isinstance(cookies_data, str):
         for cookie in cookies_data.split(';'):
             if '=' in cookie:
@@ -196,6 +194,22 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         # Устанавливаем таймер
         await asyncio.sleep(sleep_time)
         await update.message.reply_text("Питомец проснулся!")
+
+    else:
+        # Если питомец не спит, выполняем действия
+        action_found, food_link, play_link = check_action_links(response.text)
+
+        if action_found["food"]:
+            logging.info("Кормим питомца.")
+            session.get(food_link["href"])
+            await update.message.reply_text("Питомец накормлен!")
+
+        if action_found["play"]:
+            logging.info("Играем с питомцем.")
+            session.get(play_link["href"])
+            await update.message.reply_text("Питомец поиграл!")
+
+        # Если есть ссылки для выставки, можно добавить код для отправки питомца на выставку
 
     # Проверка поляны
     logging.info("Проверка поляны.")
