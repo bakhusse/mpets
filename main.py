@@ -186,7 +186,7 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     if result == "success":
         # Проверяем наличие изображения на странице
         if check_image_on_page(page_html):
-            await update.message.reply_text('Авторизация успешна! Вы на главной странице сайта: https://mpets.mobi/')
+            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
         else:
             await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
         return ConversationHandler.END
