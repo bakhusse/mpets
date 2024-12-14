@@ -195,14 +195,16 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         
         if action_found["food"]:
             logging.info("Переход по ссылке кормления.")
-            food_url = base_url + food_link["href"]
-            session.get(food_url)
+            for _ in range(6):  # Переход по ссылке кормления 6 раз
+                food_url = base_url + food_link["href"]
+                session.get(food_url)
             await update.message.reply_text("Питомец покормлен.")
         
         if action_found["play"]:
             logging.info("Переход по ссылке игры.")
-            play_url = base_url + play_link["href"]
-            session.get(play_url)
+            for _ in range(6):  # Переход по ссылке игры 6 раз
+                play_url = base_url + play_link["href"]
+                session.get(play_url)
             await update.message.reply_text("Питомец поиграл.")
 
         # Проверка поляны
@@ -215,18 +217,19 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         elif "Шанс найти семена" in response.text:
             logging.info("Шанс найти семена найден, начинаем копать.")
             for _ in range(6):
-                session.get("https://mpets.mobi/glade_dig")
-            await update.message.reply_text("Вы нашли семена!")
+                session.get(f"{base_url}/glade_dig")
+            await update.message.reply_text("Вы нашли семена на поляне!")
 
         # Проверка прогулки
         logging.info("Проверка прогулки.")
         travel_time = check_travel(response.text)
         if travel_time:
-            await update.message.reply_text(f"Питомец гуляет. Ожидайте завершения прогулки через {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
+            await update.message.reply_text(f"Питомец гуляет. Ожидайте {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
             await asyncio.sleep(travel_time)
-            await update.message.reply_text("Питомец завершил прогулку. Перехожу на прогулку!")
+        else:
+            logging.info("Питомец не гуляет, отправляем его на прогулку.")
             for i in range(10, 0, -1):
-                session.get(f"https://mpets.mobi/go_travel?id={i}")
+                session.get(f"{base_url}/go_travel?id={i}")
             await update.message.reply_text("Питомец сходил на прогулку.")
 
     return ConversationHandler.END
