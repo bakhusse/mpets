@@ -147,18 +147,6 @@ def start_session_with_cookies(update, context, cookies_str):
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
     return session, response
 
-# Функция для извлечения времени сна питомца
-def extract_sleep_time(response_text):
-    match = re.search(r"Питомец спит, проснется через (\d+) ч (\d+) м", response_text)
-    if match:
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        total_seconds = (hours * 3600) + (minutes * 60)
-        logging.info(f"Время сна: {total_seconds} секунд.")
-        return total_seconds
-    logging.warning("Не удалось найти время сна на странице.")
-    return None
-
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
@@ -186,7 +174,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
 
     await update.message.reply_text("Авторизация успешна! Теперь выполняем проверки.")
 
-    # Проверка времени сна питомца
+    # Проверка состояния сна питомца
     logging.info("Проверка состояния сна питомца.")
     sleep_time = extract_sleep_time(response.text)
     
