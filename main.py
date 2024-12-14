@@ -13,14 +13,16 @@ LOGIN, PASSWORD, CAPTCHA = range(3)
 # Ваш токен Telegram-бота
 TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
 
-# Инициализация сессии
-session = requests.Session()
-
 # Логирование для отладки
 logging.basicConfig(level=logging.DEBUG)
 
+# Функция для создания новой сессии
+def create_new_session():
+    session = requests.Session()
+    return session
+
 # Функция для получения капчи с сайта
-def get_captcha():
+def get_captcha(session):
     url = 'https://mpets.mobi/captcha'  # Примерный URL для капчи
     response = session.get(url)
     
@@ -43,7 +45,7 @@ def get_captcha():
         return None
 
 # Функция для авторизации с капчей
-def authorize(login, password, captcha_solution):
+def authorize(session, login, password, captcha_solution):
     url = 'https://mpets.mobi/login'  # Примерный URL для авторизации
     data = {
         'login': login,
@@ -59,14 +61,8 @@ def authorize(login, password, captcha_solution):
 
     logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
 
-    # Проверка на истекшую сессию
-    if "Your session is expired" in response.text:
-        logging.error("Сессия истекла, требуется повторная авторизация.")
-        return "Сессия истекла, пожалуйста, авторизуйтесь снова."
-
     # Проверка на ошибку авторизации
     if response.status_code == 200:
-        # Проверка на ошибки капчи или логина/пароля
         if "Неверная captcha" in response.text:
             logging.error("Неверная капча.")
             return "Неверная captcha"
@@ -106,8 +102,11 @@ async def password(update: Update, context: CallbackContext) -> int:
     user_password = update.message.text
     context.user_data['password'] = user_password
 
+    # Создаем новую сессию
+    session = create_new_session()
+
     # Отправляем запрос на сайт для получения капчи
-    captcha_image = get_captcha()
+    captcha_image = get_captcha(session)
 
     if captcha_image is None:
         await update.message.reply_text("Не удалось получить капчу. Попробуйте позже.")
@@ -127,8 +126,11 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     login = context.user_data['login']
     password = context.user_data['password']
 
+    # Создаем новую сессию
+    session = create_new_session()
+
     # Пытаемся авторизовать пользователя
-    result = authorize(login, password, captcha_solution)
+    result = authorize(session, login, password, captcha_solution)
 
     # Обработка различных типов ошибок
     if result == "success":
@@ -139,9 +141,10 @@ async def captcha(update: Update, context: CallbackContext) -> int:
         context.user_data.clear()  # Очищаем данные (логин, пароль)
         await update.message.reply_text('Ошибка авторизации. Для начала нового процесса авторизации используйте команду /start.')
         return ConversationHandler.END
-    elif result == "Сессия истекла, пожалуйста, авторизуйтесь снова.":
-        await update.message.reply_text('Сессия истекла. Для начала нового процесса авторизации используйте команду /start.')
+    elif result == "Неверная captcha":
+        await update.message.reply_text('Неверная captcha. Попробуйте снова.')
         context.user_data.clear()  # Очищаем данные
+        await update.message.reply_text('Ошибка капчи. Для начала нового процесса авторизации используйте команду /start.')
         return ConversationHandler.END
     else:
         await update.message.reply_text(f'Ошибка при авторизации: {result}. Попробуйте снова.')
