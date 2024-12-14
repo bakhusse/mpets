@@ -74,16 +74,15 @@ def parse_cookies(cookies_data):
 # Проверка на возможность действия (кормить, играть)
 def check_action_links(page_html):
     actions = {
-        "food": "https://mpets.mobi/?action=food&rand=",
-        "play": "https://mpets.mobi/?action=play&rand="
+        "food": r'<a href="/\?action=food&amp;rand=\d+" class="abtn">',  # Для еды
+        "play": r'<a href="/\?action=play&amp;rand=\d+" class="abtn">'   # Для игры
     }
     
     action_found = {}
     
     # Проверка на наличие картинок с гиперссылками
-    for action, link in actions.items():
-        image_pattern = r'<a href="{}[\d]+"><img'.format(link)
-        match = re.search(image_pattern, page_html)
+    for action, link_pattern in actions.items():
+        match = re.search(link_pattern, page_html)
         action_found[action] = bool(match)
     
     return action_found
@@ -122,31 +121,6 @@ def start_session_with_cookies(update, context, cookies_str):
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
 
     return session, response
-
-# Функция для проверки наличия изображения на странице
-def check_image_on_page(page_html):
-    # Ищем элемент <img class="price_img" src="/view/image/icons/coin.png" alt=""/>
-    image_pattern = r'<img class="price_img" src="/view/image/icons/coin.png" alt="">'
-    match = re.search(image_pattern, page_html)
-
-    if match:
-        logging.info("Изображение найдено на странице.")
-        return True
-    else:
-        logging.error("Изображение не найдено на странице.")
-        return False
-
-# Функция для извлечения времени ожидания из текста
-def extract_wait_time(text):
-    # Ищем строку вида "Проснется через: 18м 55с"
-    match = re.search(r"Проснется через: (\d+)м (\d+)с", text)
-    if match:
-        minutes = int(match.group(1))
-        seconds = int(match.group(2))
-        total_seconds = minutes * 60 + seconds
-        logging.info(f"Время ожидания: {total_seconds} секунд.")
-        return total_seconds
-    return None
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -206,10 +180,6 @@ async def cookies(update: Update, context: CallbackContext) -> int:
     if response.status_code == 200:
         await update.message.reply_text("Авторизация успешна!")
 
-        # Проверяем наличие изображения на обновленной странице
-        if check_image_on_page(response.text):
-            await update.message.reply_text("Изображение найдено на странице, питомец не спит!")
-        
         # Пытаемся извлечь время ожидания
         wait_time = extract_wait_time(response.text)
         if wait_time:
