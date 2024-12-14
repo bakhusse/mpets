@@ -44,20 +44,24 @@ def authorize(login, password, captcha_solution):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
     
-    response = session.post(url, data=data, headers=headers)
+    response = session.post(url, data=data, headers=headers, allow_redirects=True)
 
     logging.debug(f"Ответ на запрос авторизации: {response.status_code}, {response.text[:200]}...")  # Логирование ответа
 
     # Проверка на ошибку авторизации
     if response.status_code == 200:
-        if "Неверная captcha" in response.text:
-            return "Неверная captcha"
-        elif "Неправильное Имя или Пароль" in response.text:
-            return "Неправильное имя или пароль"
-        elif "error=" in response.url:  # Проверяем, если URL содержит ошибку
+        # Проверяем, если редирект идет на страницу ошибки
+        if "error=" in response.url and "welcome" in response.url:
             error_code = response.url.split('error=')[-1]
             logging.error(f"Ошибка авторизации, код ошибки: {error_code}")
             return f"Ошибка авторизации, код ошибки: {error_code}"
+
+        # Проверка на неверную капчу
+        elif "Неверная captcha" in response.text:
+            return "Неверная captcha"
+        # Проверка на неправильное имя или пароль
+        elif "Неправильное Имя или Пароль" in response.text:
+            return "Неправильное имя или пароль"
         else:
             return "success"
     else:
