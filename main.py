@@ -1,120 +1,160 @@
+import time
 import logging
 import requests
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
-import nest_asyncio
-from bs4 import BeautifulSoup
+import pytesseract
+from io import BytesIO
+from PIL import Image
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from telegram import Bot, Update
+from telegram.ext import CommandHandler, MessageHandler, Filters, Updater, ConversationHandler, CallbackContext
+import schedule
 
-# Настройка цветного логирования
-log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-console_handler = logging.StreamHandler()
+# Конфигурация
+TELEGRAM_TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'  # Ваш токен
 
-logging.basicConfig(level=logging.DEBUG, handlers=[console_handler])
-logger = logging.getLogger()
+# Логирование
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Состояния для ConversationHandler
+# Ступени состояния диалога с пользователем
 LOGIN, PASSWORD, CAPTCHA = range(3)
 
-# Ваш токен Telegram-бота (замените на ваш реальный токен)
-TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
+# Устанавливаем параметры для Selenium
+def get_driver():
+    options = Options()
+    options.add_argument("--headless")  # Включаем headless-режим
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    
+    driver = webdriver.Chrome(service=Service('/usr/bin/chromedriver'), options=options)
+    return driver
 
-# Функция авторизации (отправка запроса на сайт)
-def authorize_on_site(username, password, captcha):
-    session = requests.Session()
+# Получение капчи с сайта
+def get_captcha_image(driver):
+    captcha_image_element = driver.find_element(By.XPATH, '//img[@class="captcha-image"]')
+    captcha_image_url = captcha_image_element.get_attribute('src')
+    response = requests.get(captcha_image_url)
+    img = Image.open(BytesIO(response.content))
+    return img
+
+# Распознавание текста на капче с помощью pytesseract
+def solve_captcha(image):
+    captcha_text = pytesseract.image_to_string(image, config='--psm 6')
+    return captcha_text.strip()
+
+# Авторизация на сайте
+def login(driver, username, password, captcha_solution):
+    driver.get('https://mpets.mobi/welcome')
+    driver.implicitly_wait(5)
     
-    # Первая страница авторизации
-    login_url = 'https://mpets.mobi/login'
-    login_page = session.get(login_url)
+    # Вводим логин и пароль
+    username_field = driver.find_element(By.NAME, 'login')
+    password_field = driver.find_element(By.NAME, 'password')
+    captcha_field = driver.find_element(By.NAME, 'captcha')
     
-    # Извлекаем параметры для авторизации (например, CSRF токен)
-    soup = BeautifulSoup(login_page.text, 'html.parser')
-    csrf_token = soup.find('input', {'name': 'csrf_token'})['value']  # Пример
+    username_field.send_keys(username)
+    password_field.send_keys(password)
+    captcha_field.send_keys(captcha_solution)
     
-    # Данные для отправки
-    payload = {
-        'username': username,
-        'password': password,
-        'captcha': captcha,
-        'csrf_token': csrf_token
-    }
-    
-    # Отправляем запрос на авторизацию
-    response = session.post(login_url, data=payload)
-    
-    # Проверяем, прошла ли авторизация
-    if 'Oops! Your session is expired' in response.text:
+    # Нажимаем кнопку "Войти"
+    login_button = driver.find_element(By.NAME, 'submit')
+    login_button.click()
+    driver.implicitly_wait(5)
+
+# Проверка наличия изображения на странице
+def check_page_for_image(driver):
+    try:
+        driver.find_element(By.XPATH, '//img[@class="some-image-class"]')
+        return True
+    except:
         return False
-    return True
 
-# Функция, которая будет запускаться по команде /start
-async def start(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text("Добро пожаловать! Пожалуйста, введите ваш логин.")
-    return LOGIN  # Переходим к вводу логина
+# Получение логина пользователя
+def start(update, context):
+    update.message.reply_text('Привет! Пожалуйста, введи свой логин.')
+    return LOGIN
 
-# Обработка ввода логина
-async def login(update: Update, context: CallbackContext) -> int:
+# Получение пароля пользователя
+def get_login(update, context):
     context.user_data['login'] = update.message.text
-    await update.message.reply_text("Пожалуйста, введите ваш пароль.")
-    return PASSWORD  # Переходим к вводу пароля
+    update.message.reply_text('Теперь введи свой пароль.')
+    return PASSWORD
 
-# Обработка ввода пароля
-async def password(update: Update, context: CallbackContext) -> int:
+# Получение капчи от пользователя
+def get_password(update, context):
     context.user_data['password'] = update.message.text
-    # Отправляем запрос на сервер, чтобы получить капчу
-    session = requests.Session()
-    response = session.get('https://mpets.mobi/login')
-    soup = BeautifulSoup(response.text, 'html.parser')
+    update.message.reply_text('Я получил пароль. Я отправлю тебе капчу, пожалуйста, реши её и введи текст.')
     
-    # Извлекаем капчу, если она есть
-    captcha_url = soup.find('img', {'id': 'captcha_img'})['src']
-    context.user_data['captcha_url'] = captcha_url
-    await update.message.reply_text(f"Пожалуйста, введите капчу. Вот изображение: {captcha_url}")
-    
-    return CAPTCHA  # Переходим к вводу капчи
+    # Запускаем Selenium драйвер
+    driver = get_driver()
 
-# Обработка ввода капчи
-async def captcha(update: Update, context: CallbackContext) -> int:
+    # Получаем капчу с сайта и отправляем пользователю
+    captcha_image = get_captcha_image(driver)
+    update.message.reply_photo(photo=captcha_image)
+    
+    return CAPTCHA
+
+# Обработка решения капчи
+def get_captcha(update, context):
     captcha_solution = update.message.text
     login = context.user_data['login']
     password = context.user_data['password']
     
-    # Проверяем авторизацию на сайте
-    if authorize_on_site(login, password, captcha_solution):
-        await update.message.reply_text("Авторизация прошла успешно!")
-        return ConversationHandler.END  # Завершаем процесс
-    else:
-        await update.message.reply_text("Ошибка авторизации. Попробуйте снова команду /start.")
-        return ConversationHandler.END  # Завершаем процесс
+    # Пытаемся выполнить логин
+    driver = get_driver()
+    login(driver, login, password, captcha_solution)
 
-# Функция для отмены процесса
-async def cancel(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text("Процесс авторизации отменен.")
+    # Проверка наличия картинки
+    if check_page_for_image(driver):
+        logger.info("\033[92m[INFO] Картинка найдена на странице\033[0m")
+        update.message.reply_text('Картинка найдена на странице! Теперь нажмем кнопки...')
+        
+        # Логика нажатия кнопок (пример: нажимаем все кнопки на странице)
+        buttons = driver.find_elements(By.XPATH, '//button')
+        for button in buttons:
+            button.click()
+            time.sleep(1)  # Пауза между нажатием кнопок
+        
+        update.message.reply_text('Кнопки нажаты успешно!')
+    else:
+        update.message.reply_text('Картинка не найдена на странице.')
+        logger.error("\033[91m[ERROR] Картинка не найдена на странице\033[0m")
+
+    # Закрытие браузера
+    driver.quit()
+
     return ConversationHandler.END
 
-# Главная функция
-async def main():
-    application = Application.builder().token(TOKEN).build()
+# Завершение диалога
+def cancel(update, context):
+    update.message.reply_text('Операция отменена.')
+    return ConversationHandler.END
 
-    # Обработчики команд и состояний
+# Настройка Telegram бота
+def main():
+    # Настройка бота
+    updater = Updater(TELEGRAM_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    # Обработчики команд
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
-            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
-            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
+            LOGIN: [MessageHandler(Filters.text & ~Filters.command, get_login)],
+            PASSWORD: [MessageHandler(Filters.text & ~Filters.command, get_password)],
+            CAPTCHA: [MessageHandler(Filters.text & ~Filters.command, get_captcha)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
     )
 
-    application.add_handler(conversation_handler)
+    dispatcher.add_handler(conversation_handler)
 
     # Запуск бота
-    await application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
-# Настроим asyncio для работы в Google Colab (если нужно)
-nest_asyncio.apply()
-
-# Запуск бота
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()
