@@ -95,10 +95,24 @@ def authorize(session, login, password, captcha_solution):
             logging.error("Сессия истекла. Перезапуск авторизации.")
             return "Сессия истекла. Пожалуйста, начните с /start.", None
         elif "mpets.mobi" in response.url:
-            # Если авторизация успешна, проверяем на редирект на главную страницу
+            # Если авторизация успешна, отправляем запрос на /login
             logging.info("Авторизация успешна! Переход на страницу /login.")
-            login_url = "https://mpets.mobi/login"  # Переход на страницу login
-            return "redirect_to_login", login_url
+
+            login_url = "https://mpets.mobi/login"
+            data = {
+                'login': login,
+                'password': password,
+                'captcha': captcha_solution
+            }
+            response_login = session.post(login_url, data=data, headers=headers, allow_redirects=True)
+
+            if response_login.status_code == 200:
+                # Если запрос на /login успешен, отправляем пользователя на главную страницу
+                logging.info("Переход на главную страницу после авторизации.")
+                return "redirect_to_home", "https://mpets.mobi/"
+            else:
+                logging.error(f"Ошибка при запросе на /login. Статус: {response_login.status_code}")
+                return "Ошибка при запросе на /login", None
         else:
             logging.error(f"Неизвестная ошибка авторизации. Ответ: {response.text[:200]}")
             return "Неизвестная ошибка авторизации", None
@@ -196,17 +210,10 @@ async def captcha(update: Update, context: CallbackContext) -> int:
     # Пытаемся авторизовать пользователя
     result, page_html = authorize(session, login, password, captcha_solution)
 
-    if result == "redirect_to_login":
-        await update.message.reply_text(f"Авторизация успешна! Переход на страницу входа: {page_html}")
-        return ConversationHandler.END
-
     # Обработка различных типов ошибок
-    if result == "success":
-        # Проверяем наличие изображения на странице
-        if check_image_on_page(page_html):
-            await update.message.reply_text('Авторизация успешна! Изображение подтверждено, вы на главной странице сайта: https://mpets.mobi/')
-        else:
-            await update.message.reply_text('Авторизация успешна, но изображение не найдено. Повторите попытку.')
+    if result == "redirect_to_home":
+        # Если авторизация успешна и пользователь перенаправлен на главную
+        await update.message.reply_text(f'Авторизация успешна! Перейди на главную страницу: {page_html}')
         return ConversationHandler.END
     elif "Ошибка авторизации" in result:  # Если ошибка авторизации
         await update.message.reply_text(result)
