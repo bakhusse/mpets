@@ -70,6 +70,24 @@ def parse_cookies(cookies_data):
     
     return cookies_dict
 
+# Проверка на возможность действия (кормить, играть, выставка)
+def check_action_links(page_html):
+    actions = {
+        "food": "https://mpets.mobi/?action=food",
+        "play": "https://mpets.mobi/?action=play",
+        "show": "https://mpets.mobi/show"
+    }
+    
+    action_found = {}
+    
+    # Проверка на наличие картинок с гиперссылками
+    for action, link in actions.items():
+        image_pattern = r'<a href="{}"><img'.format(link)
+        match = re.search(image_pattern, page_html)
+        action_found[action] = bool(match)
+    
+    return action_found
+
 # Эмуляция сессии через cookies
 def start_session_with_cookies(update, context, cookies_str):
     session = create_new_session()
@@ -103,6 +121,24 @@ def start_session_with_cookies(update, context, cookies_str):
     
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
 
+    # Перед авторизацией проверяем возможность действий (кормление, игра, выставка)
+    action_found = check_action_links(response.text)
+    logging.info(f"Доступные действия: {action_found}")
+    
+    if action_found["food"]:
+        logging.info("Можно покормить питомца, переходим по ссылке.")
+        session.get("https://mpets.mobi/?action=food")  # Переходим по ссылке кормления 6 раз
+        for _ in range(5):
+            session.get("https://mpets.mobi/?action=food")
+
+    if action_found["play"]:
+        logging.info("Можно поиграть с питомцем, переходим по ссылке.")
+        session.get("https://mpets.mobi/?action=play")
+
+    if action_found["show"]:
+        logging.info("Можно посетить выставку, переходим по ссылке.")
+        session.get("https://mpets.mobi/show")
+    
     return session, response
 
 # Функция для проверки наличия изображения на странице
@@ -171,16 +207,14 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         wait_time = extract_wait_time(response.text)
         if wait_time:
             # Устанавливаем таймер на извлеченное время
-            await update.message.reply_text(f"Таймер установлен на {wait_time} секунд.")
+            minutes, seconds = divmod(wait_time, 60)
+            await update.message.reply_text(f"Таймер установлен на {minutes}м {seconds}с.")
 
-            # Отсчитываем время и обновляем информацию каждую секунду
-            for remaining_time in range(wait_time, 0, -1):
-                minutes, seconds = divmod(remaining_time, 60)
-                time_left = f"{minutes}м {seconds}с"
-                await update.message.reply_text(f"Осталось времени: {time_left}")
-                await asyncio.sleep(1)  # Ожидаем 1 секунду
+            # Ожидаем указанное время
+            await asyncio.sleep(wait_time)
 
-            await update.message.reply_text("Таймер завершен!")
+            # Отправляем сообщение о завершении таймера
+            await update.message.reply_text("Проснулся! Таймер завершен.")
         else:
             await update.message.reply_text("Не удалось найти время ожидания на странице.")
     else:
