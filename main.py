@@ -112,4 +112,21 @@ async def main():
     conversation_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
+            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
+            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(conversation_handler)
+
+    # Запускаем бота
+    await application.run_polling()
+
+# Запускаем бота через await в Google Colab
+if __name__ == "__main__":
+    nest_asyncio.apply()  # Это позволяет запускать асинхронный код в уже существующем цикле событий
+
+    # Теперь запускаем бота
+    asyncio.get_event_loop().run_until_complete(main())
