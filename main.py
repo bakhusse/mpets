@@ -103,5 +103,6 @@ async def main():
     # Запускаем бота
     await application.run_polling()
 
-# Запускаем бота с asyncio
-asyncio.run(main())
+# Запускаем основную функцию с текущим циклом событий
+loop = asyncio.get_event_loop()
+loop.create_task(main())
