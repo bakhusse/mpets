@@ -4,7 +4,7 @@ import logging
 import json
 import asyncio
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from datetime import datetime
 
 # Настройка логирования
@@ -60,11 +60,11 @@ async def automate_actions():
             await asyncio.sleep(60)
 
 # Функция для старта автоматизации
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("Привет! Пожалуйста, отправь куки для авторизации.")
+async def start(update: Update, context: CallbackContext):
+    await update.message.reply_text("Привет! Пожалуйста, отправь куки для авторизации.")
 
 # Функция для получения и установки кук
-def set_cookies(update: Update, context: CallbackContext):
+async def set_cookies(update: Update, context: CallbackContext):
     global session
     
     try:
@@ -78,28 +78,26 @@ def set_cookies(update: Update, context: CallbackContext):
             session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
         
         # Подтверждаем, что куки получены
-        update.message.reply_text("Куки успешно получены и сессия авторизована!")
+        await update.message.reply_text("Куки успешно получены и сессия авторизована!")
 
         # Запускаем автоматические действия
-        update.message.reply_text("Автоматические действия начнутся сейчас.")
-        asyncio.run(automate_actions())  # Запуск автоматизации в асинхронном режиме
+        await update.message.reply_text("Автоматические действия начнутся сейчас.")
+        await automate_actions()  # Запуск автоматизации в асинхронном режиме
 
     except Exception as e:
         logging.error(f"Ошибка при обработке куков: {e}")
-        update.message.reply_text("Произошла ошибка при обработке куков. Попробуйте снова.")
+        await update.message.reply_text("Произошла ошибка при обработке куков. Попробуйте снова.")
 
 # Основная функция для запуска бота
 def main():
-    updater = Updater("7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4", use_context=True)
-    dispatcher = updater.dispatcher
+    application = Application.builder().token("7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4").build()
 
     # Команды бота
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, set_cookies))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
