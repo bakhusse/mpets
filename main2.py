@@ -105,23 +105,30 @@ async def auto_actions(user_id):
         return
     
     while True:
-        # Перейти по ссылке /food
-        await visit_url(session, "https://mpets.mobi/?action=food")
-        # Перейти по ссылке /play
-        await visit_url(session, "https://mpets.mobi/?action=play")
-        # Перейти по ссылке /show
-        await visit_url(session, "https://mpets.mobi/show")
-        # Перейти по ссылке /glade_dig
+        # Переходы по ссылкам 6 раз
+        for _ in range(6):
+            await visit_url(session, "https://mpets.mobi/?action=food")
+            await asyncio.sleep(1)  # Задержка 1 секунда
+        for _ in range(6):
+            await visit_url(session, "https://mpets.mobi/?action=play")
+            await asyncio.sleep(1)  # Задержка 1 секунда
+        for _ in range(6):
+            await visit_url(session, "https://mpets.mobi/show")
+            await asyncio.sleep(1)  # Задержка 1 секунда
+
+        # Переходы по ссылкам 1 раз
         await visit_url(session, "https://mpets.mobi/glade_dig")
-        # Переход по ссылке /wakeup
+        await asyncio.sleep(1)  # Задержка 1 секунда
         await visit_url(session, "https://mpets.mobi/wakeup")
-        # Переход по ссылке /show_coin_get (один раз)
+        await asyncio.sleep(1)  # Задержка 1 секунда
         await visit_url(session, "https://mpets.mobi/show_coin_get")
+        await asyncio.sleep(1)  # Задержка 1 секунда
         
         # Переход по ссылке go_travel с числами от 10 до 1
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url)
+            await asyncio.sleep(1)  # Задержка 1 секунда
 
         # Задержка 1 минута (для выполнения каждый раз через минуту)
         await asyncio.sleep(60)
