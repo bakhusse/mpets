@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import requests
+import json
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from aiohttp import ClientSession
@@ -22,7 +23,7 @@ async def send_message(context, text):
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Привет! Отправьте куки для авторизации.")
+    await update.message.reply_text("Привет! Отправьте куки в формате JSON для авторизации.")
 
 # Команда остановки сессии
 async def stop(update: Update, context: CallbackContext):
@@ -34,11 +35,17 @@ async def stop(update: Update, context: CallbackContext):
 # Функция для обработки куки и авторизации
 async def set_cookies(update: Update, context: CallbackContext):
     global cookies, session
-    cookies = context.args  # Предполагаем, что куки передаются как аргументы в сообщении
-    if not cookies:
-        await update.message.reply_text("Пожалуйста, отправьте куки для авторизации.")
+    try:
+        # Пытаемся распарсить переданные куки как JSON
+        cookies = json.loads(" ".join(context.args))
+        if not cookies:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+    except json.JSONDecodeError:
+        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
         return
 
+    # Создаем сессию
     session = await ClientSession().__aenter__()
     await update.message.reply_text("Куки получены, сессия начата!")
 
@@ -51,10 +58,13 @@ async def get_pet_stats():
     if not session:
         return "Сессия не установлена."
 
-    url = "https://mpets.mobi/profile"
+    # Собираем куки в строку для передачи в запросах
+    cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies}
     headers = {
-        'Cookie': f"PHPSESSID={cookies.get('PHPSESSID')}; id={cookies.get('id')}; hash={cookies.get('hash')}; verify={cookies.get('verify')}",
+        'Cookie': '; '.join([f"{key}={value}" for key, value in cookies_dict.items()])
     }
+
+    url = "https://mpets.mobi/profile"
     async with session.get(url, headers=headers) as response:
         page = await response.text()
 
