@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import json
-import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from aiohttp import ClientSession, CookieJar
@@ -27,7 +26,24 @@ async def start(update: Update, context: CallbackContext):
 # Команда добавления сессии
 async def add_session(update: Update, context: CallbackContext):
     logging.info(f"User {update.message.from_user.id} started adding a new session.")
-    await update.message.reply_text("Отправьте куки в формате JSON для новой сессии.")
+    await update.message.reply_text("Введите имя для новой сессии.")
+    return "WAITING_FOR_SESSION_NAME"
+
+# Получение имени сессии
+async def get_session_name(update: Update, context: CallbackContext):
+    session_name = update.message.text.strip()
+    logging.info(f"User {update.message.from_user.id} entered session name: {session_name}")
+
+    # Проверяем, не существует ли сессия с таким именем
+    if session_name in user_sessions:
+        await update.message.reply_text(f"Сессия с именем '{session_name}' уже существует. Попробуйте другое имя.")
+        return "WAITING_FOR_SESSION_NAME"  # Ожидаем новое имя
+
+    # Сохраняем имя сессии
+    context.user_data['session_name'] = session_name
+
+    # Переход к следующему этапу: запрос куков
+    await update.message.reply_text("Теперь отправьте куки в формате JSON для новой сессии.")
     return "WAITING_FOR_COOKIES"
 
 # Функция для извлечения куков из текста в нужном формате
@@ -79,24 +95,10 @@ async def get_cookies(update: Update, context: CallbackContext):
         return "WAITING_FOR_COOKIES"
 
     # Сохраняем куки в user_data
-    context.user_data['cookies'] = cookies_dict
-
-    # Переход к следующему этапу: запрос имени сессии
-    await update.message.reply_text("Теперь введите имя для новой сессии.")
-    return "WAITING_FOR_SESSION_NAME"
-
-# Получение имени сессии
-async def get_session_name(update: Update, context: CallbackContext):
-    session_name = update.message.text.strip()
-    logging.info(f"User {update.message.from_user.id} entered session name: {session_name}")
-
-    # Проверяем, не существует ли сессия с таким именем
-    if session_name in user_sessions:
-        await update.message.reply_text(f"Сессия с именем '{session_name}' уже существует. Попробуйте другое имя.")
-        return "WAITING_FOR_SESSION_NAME"  # Ожидаем новое имя
+    session_name = context.user_data['session_name']
+    cookies = context.user_data['cookies'] = cookies_dict
 
     # Создаем сессию и сохраняем её
-    cookies = context.user_data['cookies']
     jar = CookieJar()
     jar.update_cookies(cookies)  # Обновляем куки в CookieJar
 
