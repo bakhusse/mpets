@@ -126,7 +126,7 @@ async def set_cookies(update: Update, context):
     asyncio.create_task(auto_actions())  # Запуск автоматических действий
 
 # Настройка бота
-async def main():
+def main():
     application = Application.builder().token("YOUR_BOT_API_TOKEN").build()
 
     # Обработчики команд
@@ -136,8 +136,8 @@ async def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
-    await application.run_polling()
+    application.run_polling()
 
 # Запуск бота
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
