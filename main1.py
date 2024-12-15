@@ -16,7 +16,7 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 user_sessions = {}
 
 # Состояния для ConversationHandler
-SESSION_NAME, COOKIES = range(2)
+COOKIES, SESSION_NAME = range(2)
 
 # Функция для отправки сообщений
 async def send_message(update: Update, text: str):
@@ -29,7 +29,27 @@ async def start(update: Update, context: CallbackContext):
 # Команда добавления сессии
 async def add_session(update: Update, context: CallbackContext):
     logging.info(f"User {update.message.from_user.id} started adding a new session.")
-    await update.message.reply_text("Введите имя для новой сессии:")
+    await update.message.reply_text("Отправьте куки в формате JSON для новой сессии.")
+    return COOKIES
+
+# Получение куков
+async def get_cookies(update: Update, context: CallbackContext):
+    cookies_json = update.message.text.strip()
+    logging.info(f"User {update.message.from_user.id} entered cookies.")
+
+    try:
+        cookies = json.loads(cookies_json)
+        if not cookies:
+            await update.message.reply_text("Пожалуйста, отправьте валидные куки в формате JSON.")
+            return COOKIES
+    except json.JSONDecodeError:
+        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+        return COOKIES
+
+    # Сохраняем куки в user_data
+    context.user_data['cookies'] = cookies
+
+    await update.message.reply_text("Теперь введите имя для новой сессии.")
     return SESSION_NAME
 
 # Получение имени сессии
@@ -42,39 +62,12 @@ async def get_session_name(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем '{session_name}' уже существует. Попробуйте другое имя.")
         return SESSION_NAME  # Ожидаем новое имя
 
-    # Сохраняем имя сессии в user_data
-    context.user_data['session_name'] = session_name
-
-    await update.message.reply_text(f"Сессия '{session_name}' будет создана. Пожалуйста, отправьте куки в формате JSON для этой сессии.")
-    return COOKIES
-
-# Получение куков
-async def get_cookies(update: Update, context: CallbackContext):
-    session_name = context.user_data.get('session_name', None)
-
-    if not session_name:
-        await update.message.reply_text("Ошибка: не было указано имя сессии.")
-        return ConversationHandler.END
-
-    cookies_json = update.message.text.strip()
-
-    logging.info(f"User {update.message.from_user.id} entered cookies for session '{session_name}'.")
-
-    try:
-        cookies = json.loads(cookies_json)
-        if not cookies:
-            await update.message.reply_text("Пожалуйста, отправьте валидные куки в формате JSON.")
-            return COOKIES
-    except json.JSONDecodeError:
-        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
-        return COOKIES
-
-    # Создаем объект CookieJar для хранения куков
+    # Создаем сессию и сохраняем её
+    cookies = context.user_data['cookies']
     jar = CookieJar()
     for cookie in cookies:
         jar.update_cookies({cookie['name']: cookie['value']})
 
-    # Создаём сессию для данного пользователя
     session = ClientSession(cookie_jar=jar)
     await session.__aenter__()
 
@@ -236,8 +229,8 @@ async def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("add", add_session)],
         states={
-            SESSION_NAME: [MessageHandler(filters.TEXT, get_session_name)],
-            COOKIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_cookies)],
+            COOKIES: [MessageHandler(filters.TEXT, get_cookies)],
+            SESSION_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_session_name)],
         },
         fallbacks=[],
     )
