@@ -149,6 +149,49 @@ def check_travel(session):
     
     return None
 
+# Проверка оставшегося времени для сна, поляны и прогулки
+def check_remaining_time(session):
+    # Проверка сна
+    sleep_url = "https://mpets.mobi/"
+    logging.info(f"Проверка времени сна по ссылке: {sleep_url}")
+    response = session.get(sleep_url)
+    if response.status_code == 200:
+        match = re.search(r"Проснется через (\d+)ч (\d+)м", response.text)
+        if match:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            total_seconds = (hours * 60 * 60) + (minutes * 60)
+            logging.info(f"Питомец проснется через {hours}ч {minutes}м.")
+            return {"sleep": total_seconds}
+
+    # Проверка поляны
+    glade_url = "https://mpets.mobi/glade"
+    logging.info(f"Проверка времени поляны по ссылке: {glade_url}")
+    response = session.get(glade_url)
+    if response.status_code == 200:
+        match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", response.text)
+        if match:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            total_seconds = (hours * 60 * 60) + (minutes * 60)
+            logging.info(f"Попытки закончились. Нужно подождать {hours}ч {minutes}м.")
+            return {"glade": total_seconds}
+
+    # Проверка прогулки
+    travel_url = "https://mpets.mobi/travel"
+    logging.info(f"Проверка времени прогулки по ссылке: {travel_url}")
+    response = session.get(travel_url)
+    if response.status_code == 200:
+        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
+        if match:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            total_seconds = (hours * 60 * 60) + (minutes * 60)
+            logging.info(f"До конца прогулки осталось {hours}ч {minutes}м.")
+            return {"travel": total_seconds}
+
+    return {}
+
 # Эмуляция сессии через cookies
 def start_session_with_cookies(update, context, cookies_str):
     session = create_new_session()
@@ -178,24 +221,6 @@ def start_session_with_cookies(update, context, cookies_str):
     logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
 
     return session, response
-
-# Проверка выставки
-def check_show(session):
-    url = "https://mpets.mobi/show?start=1"
-    logging.info(f"Проверка выставки по ссылке: {url}")
-    response = session.get(url)
-    
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу выставки. Статус: {response.status_code}")
-        return False
-
-    # Проверяем, есть ли на странице текст "Сейчас вы на X месте"
-    if "Сейчас вы на" in response.text:
-        logging.info("Вы на выставке, переходим по ссылке 6 раз.")
-        return True
-
-    logging.info("Вы не на выставке.")
-    return False
 
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
@@ -283,6 +308,16 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         for i in range(10, 0, -1):
             session.get(f"https://mpets.mobi/go_travel?id={i}")
         await update.message.reply_text("Питомец сходил на прогулку.")
+
+    # Проверка оставшегося времени (сон, поляна, прогулка)
+    remaining_time = check_remaining_time(session)
+    for action, time_left in remaining_time.items():
+        if action == "sleep":
+            await update.message.reply_text(f"Питомец проснется через {time_left // 3600}ч {(time_left % 3600) // 60}м.")
+        elif action == "glade":
+            await update.message.reply_text(f"На поляне нужно подождать {time_left // 3600}ч {(time_left % 3600) // 60}м.")
+        elif action == "travel":
+            await update.message.reply_text(f"До конца прогулки осталось {time_left // 3600}ч {(time_left % 3600) // 60}м.")
 
     return ConversationHandler.END
 
