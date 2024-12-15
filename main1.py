@@ -1,13 +1,14 @@
 import asyncio
 import logging
 import json
+import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
 # Установите ваш токен бота
-TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
+TOKEN = "YOUR_BOT_TOKEN"
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -29,22 +30,32 @@ async def add_session(update: Update, context: CallbackContext):
     await update.message.reply_text("Отправьте куки в формате JSON для новой сессии.")
     return "WAITING_FOR_COOKIES"
 
+# Функция для извлечения куков из текста
+def extract_cookies(cookies_text: str):
+    cookies = {}
+    # Регулярное выражение для поиска всех пар name=value в куках
+    pattern = re.compile(r'"name"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]+)"')
+    
+    matches = pattern.findall(cookies_text)
+    for name, value in matches:
+        cookies[name] = value
+    
+    return cookies
+
 # Получение куков
 async def get_cookies(update: Update, context: CallbackContext):
-    cookies_json = update.message.text.strip()
+    cookies_text = update.message.text.strip()
     logging.info(f"User {update.message.from_user.id} entered cookies.")
 
-    try:
-        cookies = json.loads(cookies_json)
-        
-        # Извлекаем только name и value
-        cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+    if not cookies_text:
+        await update.message.reply_text("Пожалуйста, отправьте текст с куками.")
+        return "WAITING_FOR_COOKIES"
+    
+    # Извлекаем куки из текста
+    cookies_dict = extract_cookies(cookies_text)
 
-        if not cookies_dict:
-            await update.message.reply_text("Пожалуйста, отправьте валидные куки в формате JSON.")
-            return "WAITING_FOR_COOKIES"
-    except json.JSONDecodeError:
-        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+    if not cookies_dict:
+        await update.message.reply_text("Не удалось извлечь куки. Убедитесь, что куки переданы в правильном формате.")
         return "WAITING_FOR_COOKIES"
 
     # Сохраняем куки в user_data
