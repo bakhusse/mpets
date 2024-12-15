@@ -24,7 +24,7 @@ async def send_message(update: Update, text: str):
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Привет! Используй /add для создания новой сессии, /del для удаления сессии, и /stats для получения статистики.")
+    await update.message.reply_text("Привет! Используй /add для создания новой сессии, /del для удаления сессии, /stats для получения статистики, /go для запуска сессии.")
 
 # Команда добавления сессии
 async def add_session(update: Update, context: CallbackContext):
@@ -173,24 +173,79 @@ async def stats(update: Update, context: CallbackContext):
     stats = await get_pet_stats(session_name)
     await send_message(update, stats)
 
+# Функция для перехода по ссылкам
+async def visit_url(session, url, user_id, session_name):
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                logging.info(f"Пользователь {user_id} (сессия '{session_name}') успешно перешел по {url}")
+            else:
+                logging.error(f"Пользователь {user_id} (сессия '{session_name}') не смог перейти по {url}: {response.status}")
+    except Exception as e:
+        logging.error(f"Ошибка при запросе к {url} для пользователя {user_id} (сессия '{session_name}'): {e}")
+
+# Команда для запуска действий с выбранной сессией
+async def go(update: Update, context: CallbackContext):
+    session_name = ' '.join(context.args).strip()
+
+    if session_name not in user_sessions:
+        await update.message.reply_text(f"Сессия с именем '{session_name}' не найдена.")
+        return
+
+    session = user_sessions[session_name]['session']
+    user_id = update.message.from_user.id
+
+    actions = [
+        "https://mpets.mobi/?action=food",
+        "https://mpets.mobi/?action=play",
+        "https://mpets.mobi/show",
+        "https://mpets.mobi/glade_dig",
+        "https://mpets.mobi/show_coin_get"
+    ]
+
+    # Переход по ссылке 6 раз
+    for action in actions[:4]:
+        await visit_url(session, action, user_id, session_name)
+        await asyncio.sleep(1)  # Задержка 1 секунда между переходами
+
+    # Переход по ссылке show_coin_get 1 раз
+    await visit_url(session, actions[4], user_id, session_name)
+
+    # Переход по ссылкам go_travel с id от 10 до 1
+    for i in range(10, 0, -1):
+        url = f"https://mpets.mobi/go_travel?id={i}"
+        await visit_url(session, url, user_id, session_name)
+        await asyncio.sleep(1)  # Задержка 1 секунда между переходами
+
+    # Задержка 60 секунд между циклами
+    await asyncio.sleep(60)
+
+    # Повторный цикл
+    await go(update, context)
+
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
-    conversation_handler = ConversationHandler(
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("add", add_session))
+    application.add_handler(CommandHandler("del", del_session))
+    application.add_handler(CommandHandler("list_sessions", list_sessions))
+    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("go", go))
+
+    # Обработчик сообщений для куков
+    conv_handler = ConversationHandler(
         entry_points=[CommandHandler("add", add_session)],
         states={
-            SESSION_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_session_name)],
+            SESSION_NAME: [MessageHandler(filters.TEXT, get_session_name)],
             COOKIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_cookies)],
         },
         fallbacks=[],
     )
 
-    application.add_handler(conversation_handler)
-    application.add_handler(CommandHandler("del", del_session))
-    application.add_handler(CommandHandler("list", list_sessions))
-    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(conv_handler)
 
     # Запуск бота
     await application.run_polling()
