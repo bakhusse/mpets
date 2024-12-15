@@ -51,7 +51,7 @@ async def get_session_name(update: Update, context: CallbackContext):
 # Получение куков
 async def get_cookies(update: Update, context: CallbackContext):
     session_name = context.user_data.get('session_name', None)
-    
+
     if not session_name:
         await update.message.reply_text("Ошибка: не было указано имя сессии.")
         return ConversationHandler.END
@@ -217,12 +217,6 @@ async def go(update: Update, context: CallbackContext):
         await visit_url(session, action, user_id, session_name)
         await asyncio.sleep(1)  # Задержка 1 секунда между переходами
 
-    # Переход по ссылкам go_travel с id от 10 до 1
-    for i in range(10, 0, -1):
-        url = f"https://mpets.mobi/go_travel?id={i}"
-        await visit_url(session, url, user_id, session_name)
-        await asyncio.sleep(1)  # Задержка 1 секунда между переходами
-
     await asyncio.sleep(60)  # Задержка 60 секунд между циклами
     await go(update, context)  # Повторный цикл
 
@@ -254,7 +248,6 @@ async def main():
     await application.run_polling()
 
 if __name__ == "__main__":
-    # Запуск polling без использования asyncio.run()
     import nest_asyncio
     nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
     asyncio.get_event_loop().run_until_complete(main())
