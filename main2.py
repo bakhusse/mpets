@@ -1,28 +1,16 @@
 import requests
-import logging
-import json
-import asyncio
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from bs4 import BeautifulSoup
+import time
+import logging
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+import asyncio
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
-# Глобальная переменная для хранения сессий пользователей
-user_sessions = {}
-user_tasks = {}  # Словарь для хранения задач пользователей
-
-# Функция для выполнения перехода по URL
-async def visit_url(session, url):
-    try:
-        response = session.get(url)
-        if response.status_code == 200:
-            logging.info(f"Успешно перешли по ссылке: {url}")
-        else:
-            logging.error(f"Ошибка при переходе по ссылке {url}. Статус: {response.status_code}")
-    except Exception as e:
-        logging.error(f"Ошибка при запросе к {url}: {e}")
+# Глобальная переменная для сессии
+session = None
 
 # Функция для получения статистики питомца
 async def get_pet_stats(session):
@@ -32,31 +20,42 @@ async def get_pet_stats(session):
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Извлекаем нужные данные с проверкой на None
-        pet_name = soup.find('a', class_='darkgreen_link')
-        pet_name = pet_name.text.strip() if pet_name else "Неизвестно"
+        # Извлекаем данные из HTML страницы с проверкой на None
+        pet_name_and_level = soup.find('div', class_='stat_item')
+        pet_name_and_level_text = pet_name_and_level.text if pet_name_and_level else ""
+        pet_name = pet_name_and_level_text.split(",")[0].strip()  # Имя питомца
+        pet_level = pet_name_and_level_text.split(",")[1].strip() if len(pet_name_and_level_text.split(",")) > 1 else "Неизвестно"  # Уровень питомца
+        
+        # Опыт: Разделяем текущий опыт и максимальный опыт
+        exp_item = soup.find('div', class_='stat_item', string=lambda text: text and "Опыт" in text)
+        if exp_item:
+            exp_text = exp_item.text.split(":")[-1].strip()
+            current_exp, max_exp = exp_text.split(" / ")
+            current_exp = current_exp.strip()  # Текущий опыт
+            max_exp = max_exp.strip()  # Максимальный опыт
+        else:
+            current_exp, max_exp = "Неизвестно", "Неизвестно"
+        
+        # Красота
+        beauty_item = soup.find('div', class_='stat_item', string=lambda text: text and "Красота" in text)
+        beauty = beauty_item.text.split(":")[-1].strip() if beauty_item else "Неизвестно"
+        
+        # Монеты
+        coins_item = soup.find('div', class_='stat_item', string=lambda text: text and "Монеты" in text)
+        coins = coins_item.text.split(":")[-1].strip() if coins_item else "Неизвестно"
+        
+        # Сердечки
+        hearts_item = soup.find('div', class_='stat_item', string=lambda text: text and "Сердечки" in text)
+        hearts = hearts_item.text.split(":")[-1].strip() if hearts_item else "Неизвестно"
+        
+        # VIP/Премиум-аккаунт
+        vip_item = soup.find('div', class_='stat_item', string=lambda text: text and "VIP-аккаунт" in text)
+        vip = vip_item.text.split(":")[-1].strip() if vip_item else "Неизвестно"
 
-        pet_level = soup.find('div', class_='stat_item')
-        pet_level = pet_level.text.split(' ')[-2] if pet_level else "Неизвестно"
-        
-        exp_item = soup.find_all('div', class_='stat_item')[3] if len(soup.find_all('div', class_='stat_item')) > 3 else None
-        exp = exp_item.text.strip().split(' ')[-2:] if exp_item else ["Неизвестно", "Неизвестно"]
-        
-        beauty_item = soup.find_all('div', class_='stat_item')[4] if len(soup.find_all('div', class_='stat_item')) > 4 else None
-        beauty = beauty_item.text.strip().split(' ')[-1] if beauty_item else "Неизвестно"
-        
-        coins_item = soup.find_all('div', class_='stat_item')[6] if len(soup.find_all('div', class_='stat_item')) > 6 else None
-        coins = coins_item.text.strip().split(' ')[-1] if coins_item else "Неизвестно"
-        
-        hearts_item = soup.find_all('div', class_='stat_item')[7] if len(soup.find_all('div', class_='stat_item')) > 7 else None
-        hearts = hearts_item.text.strip().split(' ')[-1] if hearts_item else "Неизвестно"
-        
-        vip_item = soup.find_all('div', class_='stat_item')[1] if len(soup.find_all('div', class_='stat_item')) > 1 else None
-        vip = vip_item.text.strip().split(':')[-1].strip() if vip_item else "Неизвестно"
-
+        # Формируем сообщение с результатами
         stats = f"""
         Никнейм и уровень: {pet_name}, {pet_level} уровень
-        Опыт: {exp[0]} / {exp[1]}
+        Опыт: {current_exp} / {max_exp}
         Красота: {beauty}
         Монеты: {coins}
         Сердечки: {hearts}
@@ -65,113 +64,80 @@ async def get_pet_stats(session):
         
         return stats
     else:
-        logging.error(f"Ошибка при получении профиля питомца. Статус: {response.status_code}")
         return "Не удалось получить информацию о питомце."
 
+# Функция для перехода по ссылкам
+async def auto_actions():
+    global session
+
+    # Список ссылок для автоматических действий
+    urls = [
+        "https://mpets.mobi/?action=food",
+        "https://mpets.mobi/?action=play",
+        "https://mpets.mobi/show",
+        "https://mpets.mobi/glade_dig",
+        "https://mpets.mobi/wakeup"
+    ]
+    
+    # Переход по ссылкам
+    for url in urls:
+        for _ in range(6):  # Переходить 6 раз по каждой ссылке
+            if session:
+                response = session.get(url)
+                if response.status_code == 200:
+                    logging.info(f"Переход по ссылке {url} успешен.")
+                else:
+                    logging.error(f"Ошибка при запросе к {url}: {response.status_code}")
+            time.sleep(1)  # Задержка 1 секунда между переходами
+
 # Функция для старта бота
-async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Привет! Пожалуйста, отправь куки для авторизации.")
+async def start(update: Update, context):
+    update.message.reply_text("Привет! Отправь мне куки для авторизации.")
 
-# Функция для получения и установки кук
-async def set_cookies(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    try:
-        # Получаем куки из сообщения
-        cookies_str = update.message.text
-        cookies = json.loads(cookies_str)  # Преобразуем строку в список куков
-        
-        # Создаем уникальную сессию для пользователя
-        session = requests.Session()
-        for cookie in cookies:
-            session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])
-        
-        # Сохраняем сессию для пользователя
-        user_sessions[user_id] = session
-        
-        # Подтверждаем, что куки получены
-        await update.message.reply_text("Куки успешно получены и сессия авторизована!")
-        
-        # Запускаем автоматические действия для этого пользователя
-        user_tasks[user_id] = asyncio.create_task(auto_actions(user_id))
+# Функция для остановки сессии
+async def stop(update: Update, context):
+    global session
+    session = None  # Останавливаем сессию
+    update.message.reply_text("Сессия остановлена. Отправьте новые куки для другого аккаунта.")
 
-    except Exception as e:
-        logging.error(f"Ошибка при обработке куков: {e}")
-        await update.message.reply_text("Произошла ошибка при обработке куков. Попробуйте снова.")
-
-# Функция для старта автоматических переходов по ссылкам
-async def auto_actions(user_id):
-    session = user_sessions.get(user_id)
-    if not session:
-        logging.error(f"Сессия для пользователя {user_id} не найдена.")
+# Функция для обработки /stats
+async def stats(update: Update, context):
+    if session is None:
+        update.message.reply_text("Сессия не установлена. Пожалуйста, отправьте куки.")
         return
     
-    while user_id in user_sessions:  # Переходы будут выполняться, пока сессия существует
-        # Переходы по ссылкам 6 раз
-        for _ in range(6):
-            await visit_url(session, "https://mpets.mobi/?action=food")
-            await asyncio.sleep(1)  # Задержка 1 секунда
-        for _ in range(6):
-            await visit_url(session, "https://mpets.mobi/?action=play")
-            await asyncio.sleep(1)  # Задержка 1 секунда
-        for _ in range(6):
-            await visit_url(session, "https://mpets.mobi/show")
-            await asyncio.sleep(1)  # Задержка 1 секунда
+    stats = await get_pet_stats(session)  # Получаем статистику
+    update.message.reply_text(stats)
 
-        # Переходы по ссылке glade_dig 6 раз
-        for _ in range(6):
-            await visit_url(session, "https://mpets.mobi/glade_dig")
-            await asyncio.sleep(1)  # Задержка 1 секунда
-        
-        # Переходы по ссылкам 1 раз
-        await visit_url(session, "https://mpets.mobi/wakeup")
-        await asyncio.sleep(1)  # Задержка 1 секунда
-        await visit_url(session, "https://mpets.mobi/show_coin_get")
-        await asyncio.sleep(1)  # Задержка 1 секунда
-        
-        # Переход по ссылке go_travel с числами от 10 до 1
-        for i in range(10, 0, -1):
-            url = f"https://mpets.mobi/go_travel?id={i}"
-            await visit_url(session, url)
-            await asyncio.sleep(1)  # Задержка 1 секунда
+# Функция для обработки куки от пользователя
+async def set_cookies(update: Update, context):
+    global session
+    
+    cookies_input = update.message.text  # Получаем куки от пользователя
+    cookies_list = eval(cookies_input)  # Преобразуем строку в список словарей
+    
+    session = requests.Session()  # Создаем новую сессию
+    for cookie in cookies_list:
+        session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'])  # Добавляем куки в сессию
+    
+    update.message.reply_text("Куки успешно установлены. Сессия готова к работе.")
+    
+    # Запуск автоматических действий
+    asyncio.create_task(auto_actions())  # Запуск автоматических действий
 
-        # Задержка 1 минута (для выполнения каждый раз через минуту)
-        await asyncio.sleep(60)
+# Настройка бота
+async def main():
+    application = Application.builder().token("YOUR_BOT_API_TOKEN").build()
 
-# Команда /stats для получения статистики питомца
-async def stats(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    if user_id in user_sessions:
-        session = user_sessions[user_id]
-        stats = await get_pet_stats(session)  # Получаем статистику
-        await update.message.reply_text(stats)  # Отправляем статистику пользователю
-    else:
-        await update.message.reply_text("Сессия не авторизована. Пожалуйста, отправьте куки для авторизации.")
-
-# Команда /stop для остановки сессии
-async def stop(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    if user_id in user_sessions:
-        # Удаляем сессию для пользователя и отменяем задачу
-        del user_sessions[user_id]
-        if user_id in user_tasks:
-            user_tasks[user_id].cancel()  # Прерываем задачу переходов
-            del user_tasks[user_id]
-        await update.message.reply_text("Сессия остановлена. Вы можете ввести новые куки для другого аккаунта.")
-    else:
-        await update.message.reply_text("Сессия не найдена. Сначала отправьте куки для авторизации.")
-
-# Основная функция для запуска бота
-def main():
-    application = Application.builder().token("7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4").build()
-
-    # Команды бота
+    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stats", stats))  # Команда /stats
-    application.add_handler(CommandHandler("stop", stop))  # Команда /stop
+    application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
-    application.run_polling()
+    await application.run_polling()
 
+# Запуск бота
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
