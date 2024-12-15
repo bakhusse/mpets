@@ -139,5 +139,7 @@ async def main():
     await application.run_polling()
 
 if __name__ == "__main__":
-    # Запускаем только асинхронный цикл, а не создаем новый с asyncio.run()
+    # Запуск polling без использования asyncio.run()
+    import nest_asyncio
+    nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
     asyncio.get_event_loop().run_until_complete(main())
