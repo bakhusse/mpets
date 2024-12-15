@@ -1,261 +1,261 @@
 import asyncio
-import requests
-import json
-import nest_asyncio
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
 import logging
-import colorlog
-import os
-import re
+import json
+from telegram import Update
+from telegram.ext import Application, CommandHandler, CallbackContext
+from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
-# Для работы с циклом событий внутри Google Colab
-nest_asyncio.apply()
+# Установите ваш токен бота
+TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
 
-# Состояния для ConversationHandler
-START, COOKIES = range(2)
+# Настройка логирования
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Ваш токен Telegram-бота
-TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
+# Глобальная переменная для хранения сессий пользователей
+user_sessions = {}
 
-# Папка для сохранения капчи
-CAPTCHA_FOLDER = 'captcha_images'
-if not os.path.exists(CAPTCHA_FOLDER):
-    os.makedirs(CAPTCHA_FOLDER)
+# Функция для отправки сообщений
+async def send_message(update: Update, text: str):
+    await update.message.reply_text(text)
 
-# Настройка цветного логирования
-log_formatter = colorlog.ColoredFormatter(
-    '%(log_color)s[%(asctime)s] - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    log_colors={
-        'DEBUG': 'blue',
-        'INFO': 'green',
-        'WARNING': 'yellow',
-        'ERROR': 'red',
-        'CRITICAL': 'bold_red',
-    }
-)
+# Команда старт для начала работы с ботом
+async def start(update: Update, context: CallbackContext):
+    await update.message.reply_text("Привет! Управляй сессиями с помощью команд:\n"
+                                    "/add - добавить новую сессию\n"
+                                    "/del - удалить сессию\n"
+                                    "/list - посмотреть все сессии\n"
+                                    "/on - активировать сессию\n"
+                                    "/off - деактивировать сессию\n"
+                                    "/stats <имя_сессии> - проверить статистику питомца\n"
+                                    "Отправьте куки в формате JSON для авторизации.")
 
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-
-logging.getLogger().addHandler(console_handler)
-logging.getLogger().setLevel(logging.DEBUG)
-
-# Функция для создания новой сессии
-def create_new_session():
-    session = requests.Session()
-    logging.info("Создание новой сессии.")
-    return session
-
-# Преобразование cookies в нужный формат
-def parse_cookies(cookies_data):
-    cookies_dict = {}
-    
-    if isinstance(cookies_data, list):
-        for cookie in cookies_data:
-            name = cookie.get("name")
-            value = cookie.get("value")
-            if name and value:
-                cookies_dict[name] = value
-    elif isinstance(cookies_data, str):
-        for cookie in cookies_data.split(';'):
-            if '=' in cookie:
-                key, value = cookie.strip().split('=', 1)
-                cookies_dict[key] = value
-    
-    return cookies_dict
-
-# Проверка сна
-def check_sleep(session):
-    url = "https://mpets.mobi/"
-    logging.info(f"Проверка времени сна по ссылке: {url}")
-    response = session.get(url)
-    
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу сна. Статус: {response.status_code}")
-        return None
-    
-    match = re.search(r"Проснется через (\d+)ч (\d+)м", response.text)
-    if match:
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        total_seconds = (hours * 60 * 60) + (minutes * 60)
-        logging.info(f"Питомец проснется через {hours}ч {minutes}м.")
-        return total_seconds
-    
-    return None
-
-# Проверка поляны (только один запрос, проверка на попытки)
-def check_glade(session):
-    url = "https://mpets.mobi/glade"
-    logging.info(f"Проверка поляны по ссылке: {url}")
-    response = session.get(url)
-
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу поляны. Статус: {response.status_code}")
-        return None
-    
-    match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", response.text)
-    if match:
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        total_seconds = (hours * 60 * 60) + (minutes * 60)
-        logging.info(f"Попытки закончились, нужно подождать {hours}ч {minutes}м.")
-        return total_seconds
-    
-    return False
-
-# Переход по ссылке на поле для поиска семян
-def dig_for_seeds(session):
-    url = "https://mpets.mobi/glade_dig"
-    logging.info(f"Переход по ссылке для поиска семян: {url}")
-    response = session.get(url)
-    
-    if response.status_code == 200:
-        logging.info("Перешли на страницу для поиска семян.")
-        return True
-    logging.error(f"Не удалось перейти на страницу для поиска семян. Статус: {response.status_code}")
-    return False
-
-# Проверка прогулки
-def check_travel(session):
-    url = "https://mpets.mobi/travel"
-    logging.info(f"Проверка прогулки по ссылке: {url}")
-    response = session.get(url)
-    
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу прогулки. Статус: {response.status_code}")
-        return None
-    
-    match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
-    if match:
-        hours = int(match.group(1))
-        minutes = int(match.group(2))
-        total_seconds = (hours * 60 * 60) + (minutes * 60)
-        logging.info(f"До конца прогулки осталось {hours}ч {minutes}м.")
-        return total_seconds
-    
-    return None
-
-# Отправка питомца гулять
-def send_pet_to_travel(session):
-    url = "https://mpets.mobi/travel"
-    logging.info(f"Отправляем питомца гулять по ссылке: {url}")
-    response = session.get(url)
-    if response.status_code == 200:
-        logging.info("Питомец отправлен гулять.")
-        return True
-    logging.error(f"Не удалось отправить питомца гулять. Статус: {response.status_code}")
-    return False
-
-# Эмуляция сессии через cookies
-def start_session_with_cookies(update, context, cookies_str):
-    session = create_new_session()
-    context.user_data['session'] = session  # Сохраняем сессию в контексте пользователя
-
+# Команда для добавления новой сессии
+async def add_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
     try:
-        cookies_data = json.loads(cookies_str)
-        cookies_dict = parse_cookies(cookies_data)
+        if len(context.args) < 2:
+            await update.message.reply_text("Использование: /add <имя_сессии> <куки в формате JSON>")
+            return
+
+        session_name = context.args[0]
+        cookies_json = " ".join(context.args[1:])
+        
+        cookies = json.loads(cookies_json)
+        if not cookies:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+
+        # Создаём объект CookieJar для хранения и отправки куков
+        jar = CookieJar()
+        for cookie in cookies:
+            jar.update_cookies({cookie['name']: cookie['value']})
+
+        session = ClientSession(cookie_jar=jar)
+        await session.__aenter__()
+
+        # Сохраняем сессию и куки для пользователя
+        if user_id not in user_sessions:
+            user_sessions[user_id] = {}
+
+        if session_name in user_sessions[user_id]:
+            await update.message.reply_text(f"Сессия с именем {session_name} уже существует.")
+        else:
+            user_sessions[user_id][session_name] = {"session": session, "active": False}
+            await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
+
     except json.JSONDecodeError:
-        cookies_dict = parse_cookies(cookies_str)
-    
-    if not cookies_dict:
-        logging.error("Ошибка: cookies пустые или некорректные.")
-        return None
-    
-    session.cookies.update(cookies_dict)
-    logging.info(f"Сессия с cookies: {session.cookies.get_dict()}")
+        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+    except Exception as e:
+        await update.message.reply_text(f"Произошла ошибка: {e}")
 
-    return session
+# Команда для удаления сессии
+async def remove_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /del <имя_сессии>")
+        return
 
-# Отправка уведомлений в Telegram
-async def send_telegram_notification(update: Update, message: str):
-    await update.message.reply_text(message)
+    session_name = context.args[0]
 
-# Обработка команды /start
-async def start(update: Update, context: CallbackContext) -> int:
-    logging.info("Начало процесса авторизации через cookies.")
-    await update.message.reply_text("Привет! Отправь свои cookies для авторизации в одном из следующих форматов:\n"
-                                    "1. JSON-массив объектов cookies\n"
-                                    "2. Строка cookies в формате: cookie1=value1; cookie2=value2")
-    return COOKIES
-
-# Обработка получения cookies от пользователя
-async def cookies(update: Update, context: CallbackContext) -> int:
-    cookies_str = update.message.text.strip()
-
-    logging.info(f"Пользователь отправил cookies: {cookies_str}")
-
-    if not cookies_str:
-        await update.message.reply_text("Ошибка: Пожалуйста, отправьте cookies в правильном формате.")
-        return COOKIES
-
-    session = start_session_with_cookies(update, context, cookies_str)
-    
-    if session is None:
-        await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
-        return COOKIES
-
-    await update.message.reply_text("Авторизация успешна! Теперь выполняем проверки.")
-
-    # 1. Проверка сна
-    sleep_time = check_sleep(session)
-    
-    if sleep_time:
-        # Установим таймер
-        await send_telegram_notification(update, f"Питомец спит. Проснется через {sleep_time // 3600}ч {(sleep_time % 3600) // 60}м.")
-        await asyncio.sleep(sleep_time)
-        await send_telegram_notification(update, "Питомец проснулся!")
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        session = user_sessions[user_id].pop(session_name)
+        await session["session"].__aexit__(None, None, None)
+        await update.message.reply_text(f"Сессия {session_name} удалена.")
     else:
-        # Если питомец не спит, проверяем еду, игру и выставку
-        logging.info("Питомец не спит, проверяем еду, игру и выставку.")
-        # Эта часть кода зависит от логики вашего бота для проверки еды, игры и выставки.
-        # Здесь можно добавить соответствующую логику для того, чтобы выполнить проверку этих действий.
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-    # 2. Проверка поляны (только один запрос)
-    glade_time = check_glade(session)
-    
-    if glade_time:
-        # Установим таймер для поляны
-        await send_telegram_notification(update, f"Попытки закончились, возвращайтесь через {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
-        await asyncio.sleep(glade_time)
-        await send_telegram_notification(update, "Теперь можете вернуться на поляну!")
+# Команда для отображения всех сессий пользователя
+async def list_sessions(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id in user_sessions and user_sessions[user_id]:
+        session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
+                                 for name, session in user_sessions[user_id].items()])
+        await update.message.reply_text(f"Ваши активные сессии:\n{session_list}")
     else:
-        # Если попытки не закончились, пробуем перейти на страницу для поиска семян
-        if dig_for_seeds(session):
-            await send_telegram_notification(update, "Переход на страницу для поиска семян выполнен.")
+        await update.message.reply_text("У вас нет активных сессий.")
 
-    # 3. Проверка прогулки
-    travel_time = check_travel(session)
-    
-    if travel_time:
-        # Установим таймер для прогулки
-        await send_telegram_notification(update, f"До конца прогулки осталось {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
-        await asyncio.sleep(travel_time)
-        await send_telegram_notification(update, "Прогулка завершена!")
+# Команда для активации сессии
+async def activate_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /on <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        user_sessions[user_id][session_name]["active"] = True
+        await update.message.reply_text(f"Сессия {session_name} активирована!")
+
+        # Автоматически начать действия после активации сессии
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
     else:
-        # Если прогулка не идет, отправляем питомца гулять
-        send_pet_to_travel(session)
-        await send_telegram_notification(update, "Питомец отправлен гулять.")
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-    return ConversationHandler.END
+# Команда для деактивации сессии
+async def deactivate_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /off <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        user_sessions[user_id][session_name]["active"] = False
+        await update.message.reply_text(f"Сессия {session_name} деактивирована.")
+    else:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
+# Функция для получения статистики питомца
+async def get_pet_stats(session: ClientSession):
+    url = "https://mpets.mobi/profile"
+    async with session.get(url) as response:
+        if response.status != 200:
+            return f"Ошибка при загрузке страницы профиля: {response.status}"
+
+        page = await response.text()
+    soup = BeautifulSoup(page, 'html.parser')
+
+    # Парсим страницу, чтобы извлечь информацию о питомце
+    stat_items = soup.find_all('div', class_='stat_item')
+    
+    if not stat_items:
+        return "Не удалось найти элементы статистики."
+
+    pet_name = stat_items[0].find('a', class_='darkgreen_link')
+    if not pet_name:
+        return "Не удалось найти имя питомца."
+    pet_name = pet_name.text.strip()
+
+    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
+
+    experience = "Не найдено"
+    for item in stat_items:
+        if 'Опыт:' in item.text:
+            experience = item.text.strip().split('Опыт:')[-1].strip()
+            break
+
+    beauty = "Не найдено"
+    for item in stat_items:
+        if 'Красота:' in item.text:
+            beauty = item.text.strip().split('Красота:')[-1].strip()
+            break
+
+    coins = "Не найдено"
+    for item in stat_items:
+        if 'Монеты:' in item.text:
+            coins = item.text.strip().split('Монеты:')[-1].strip()
+            break
+
+    hearts = "Не найдено"
+    for item in stat_items:
+        if 'Сердечки:' in item.text:
+            hearts = item.text.strip().split('Сердечки:')[-1].strip()
+            break
+
+    vip_status = "Не найдено"
+    for item in stat_items:
+        if 'VIP-аккаунт:' in item.text:
+            vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
+            break
+
+    stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
+    stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
+    stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
+    stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
+
+    return stats
+
+# Команда для проверки статистики питомца
+async def stats(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /stats <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        session = user_sessions[user_id][session_name]["session"]
+        stats = await get_pet_stats(session)
+        await send_message(update, stats)
+    else:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
+# Функция для перехода по ссылкам
+async def visit_url(session: ClientSession, url: str, session_name: str):
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
+            else:
+                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
+    except Exception as e:
+        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
+
+# Функция для автоматических действий
+async def auto_actions(session: ClientSession, session_name: str):
+    actions = [
+        "https://mpets.mobi/?action=food",
+        "https://mpets.mobi/?action=play",
+        "https://mpets.mobi/show",
+        "https://mpets.mobi/glade_dig",
+        "https://mpets.mobi/show_coin_get"
+    ]
+
+    while True:
+        for action in actions[:4]:
+            for _ in range(6):
+                await visit_url(session, action, session_name)
+                await asyncio.sleep(1)
+
+        await visit_url(session, actions[4], session_name)
+        for i in range(10, 0, -1):
+            url = f"https://mpets.mobi/go_travel?id={i}"
+            await visit_url(session, url, session_name)
+            await asyncio.sleep(1)
+
+        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
 
 # Основная функция для запуска бота
-def main():
+async def main():
     application = Application.builder().token(TOKEN).build()
 
-    conversation_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            COOKIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, cookies)],
-        },
-        fallbacks=[],
-    )
+    # Обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("add", add_session))
+    application.add_handler(CommandHandler("del", remove_session))
+    application.add_handler(CommandHandler("list", list_sessions))
+    application.add_handler(CommandHandler("on", activate_session))
+    application.add_handler(CommandHandler("off", deactivate_session))
+    application.add_handler(CommandHandler("stats", stats))
 
-    application.add_handler(conversation_handler)
-    application.run_polling()
+    # Запуск бота
+    await application.run_polling()
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    import nest_asyncio
+    nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
+    asyncio.get_event_loop().run_until_complete(main())
