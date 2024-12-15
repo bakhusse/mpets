@@ -2,7 +2,7 @@ import asyncio
 import logging
 import json
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
@@ -14,9 +14,6 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 
 # Глобальные переменные для хранения сессий
 user_sessions = {}
-
-# Состояния для ConversationHandler
-COOKIES, SESSION_NAME = range(2)
 
 # Функция для отправки сообщений
 async def send_message(update: Update, text: str):
@@ -30,7 +27,7 @@ async def start(update: Update, context: CallbackContext):
 async def add_session(update: Update, context: CallbackContext):
     logging.info(f"User {update.message.from_user.id} started adding a new session.")
     await update.message.reply_text("Отправьте куки в формате JSON для новой сессии.")
-    return COOKIES
+    return "WAITING_FOR_COOKIES"
 
 # Получение куков
 async def get_cookies(update: Update, context: CallbackContext):
@@ -41,17 +38,17 @@ async def get_cookies(update: Update, context: CallbackContext):
         cookies = json.loads(cookies_json)
         if not cookies:
             await update.message.reply_text("Пожалуйста, отправьте валидные куки в формате JSON.")
-            return COOKIES
+            return "WAITING_FOR_COOKIES"
     except json.JSONDecodeError:
         await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
-        return COOKIES
+        return "WAITING_FOR_COOKIES"
 
     # Сохраняем куки в user_data
     context.user_data['cookies'] = cookies
 
-    # Переход к следующему состоянию: запрос имени сессии
+    # Переход к следующему этапу: запрос имени сессии
     await update.message.reply_text("Теперь введите имя для новой сессии.")
-    return SESSION_NAME
+    return "WAITING_FOR_SESSION_NAME"
 
 # Получение имени сессии
 async def get_session_name(update: Update, context: CallbackContext):
@@ -61,7 +58,7 @@ async def get_session_name(update: Update, context: CallbackContext):
     # Проверяем, не существует ли сессия с таким именем
     if session_name in user_sessions:
         await update.message.reply_text(f"Сессия с именем '{session_name}' уже существует. Попробуйте другое имя.")
-        return SESSION_NAME  # Ожидаем новое имя
+        return "WAITING_FOR_SESSION_NAME"  # Ожидаем новое имя
 
     # Создаем сессию и сохраняем её
     cookies = context.user_data['cookies']
@@ -76,7 +73,7 @@ async def get_session_name(update: Update, context: CallbackContext):
     user_sessions[session_name] = {'session': session, 'cookies': cookies}
 
     await update.message.reply_text(f"Сессия '{session_name}' успешно создана!")
-    return ConversationHandler.END
+    return "SESSION_CREATED"
 
 # Команда удаления сессии
 async def del_session(update: Update, context: CallbackContext):
@@ -206,20 +203,10 @@ async def go(update: Update, context: CallbackContext):
         "https://mpets.mobi/show_coin_get"
     ]
 
-    # Переход по ссылке 6 раз
     for action in actions[:4]:
         for _ in range(6):
             await visit_url(session, action, user_id, session_name)
-            await asyncio.sleep(1)  # Задержка 1 секунда между переходами
-
-    # Переход по ссылке show_coin_get 1 раз
-    await visit_url(session, actions[4], user_id, session_name)
-
-    # Переход по ссылкам go_travel с id от 10 до 1
-    for i in range(10, 0, -1):
-        url = f"https://mpets.mobi/go_travel?id={i}"
-        await visit_url(session, url, user_id, session_name)
-        await asyncio.sleep(1)  # Задержка 1 секунда между переходами
+            await asyncio.sleep(1)
 
     await update.message.reply_text(f"Действия с сессией '{session_name}' завершены.")
 
@@ -235,17 +222,8 @@ async def main():
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("go", go))
 
-    # Обработчик сообщений для куков
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("add", add_session)],
-        states={
-            COOKIES: [MessageHandler(filters.TEXT, get_cookies)],
-            SESSION_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_session_name)],
-        },
-        fallbacks=[],
-    )
-
-    application.add_handler(conv_handler)
+    # Обработчики сообщений для куков
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_cookies))
 
     # Запуск бота
     await application.run_polling()
