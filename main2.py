@@ -17,8 +17,8 @@ cookies = None
 session = None
 
 # Функция для отправки сообщений
-async def send_message(context, text):
-    await context.bot.send_message(chat_id=context.message.chat_id, text=text)
+async def send_message(update: Update, text: str):
+    await update.message.reply_text(text)
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
@@ -132,7 +132,7 @@ async def get_pet_stats():
 # Команда для получения статистики питомца
 async def stats(update: Update, context: CallbackContext):
     stats = await get_pet_stats()
-    await send_message(context, stats)
+    await send_message(update, stats)
 
 # Функция для перехода по ссылкам
 async def visit_url(session, url):
