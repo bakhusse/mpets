@@ -96,17 +96,17 @@ async def get_cookies(update: Update, context: CallbackContext):
 
     # Сохраняем куки в user_data
     session_name = context.user_data['session_name']
-    cookies = context.user_data['cookies'] = cookies_dict
+    context.user_data['cookies'] = cookies_dict
 
     # Создаем сессию и сохраняем её
     jar = CookieJar()
-    jar.update_cookies(cookies)  # Обновляем куки в CookieJar
+    jar.update_cookies(cookies_dict)  # Обновляем куки в CookieJar
 
     session = ClientSession(cookie_jar=jar)
     await session.__aenter__()
 
     # Сохраняем сессию в словарь с ключом имени сессии
-    user_sessions[session_name] = {'session': session, 'cookies': cookies}
+    user_sessions[session_name] = {'session': session, 'cookies': cookies_dict}
 
     await update.message.reply_text(f"Сессия '{session_name}' успешно создана!")
     return "SESSION_CREATED"
