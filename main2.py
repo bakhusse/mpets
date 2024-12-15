@@ -80,48 +80,55 @@ async def get_pet_stats():
     # Пытаемся парсить страницу с профилем
     soup = BeautifulSoup(page, 'html.parser')
 
-    # Получаем никнейм и уровень
-    pet_name = soup.find('div', class_='stat_item').find('a', class_='darkgreen_link')
+    # Ищем все элементы с классом stat_item
+    stat_items = soup.find_all('div', class_='stat_item')
+    
+    if not stat_items:
+        return "Не удалось найти элементы статистики."
+
+    # Получаем никнейм и уровень из первого элемента
+    pet_name = stat_items[0].find('a', class_='darkgreen_link')
     if not pet_name:
         return "Не удалось найти имя питомца."
     pet_name = pet_name.text.strip()
 
-    pet_level = soup.find('div', class_='stat_item').text.split(' ')[-2]  # Уровень питомца
+    # Получаем уровень питомца из текста первого элемента
+    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
 
     # Получаем опыт
-    experience = soup.find('div', class_='stat_item', string=lambda text: text and 'Опыт:' in text)
-    if experience:
-        experience = experience.find_next('div').text.strip()
-    else:
-        experience = "Не найдено"
+    experience = "Не найдено"
+    for item in stat_items:
+        if 'Опыт:' in item.text:
+            experience = item.text.strip().split('Опыт:')[-1].strip()
+            break
 
     # Получаем красоту
-    beauty = soup.find('div', class_='stat_item', string=lambda text: text and 'Красота:' in text)
-    if beauty:
-        beauty = beauty.find_next('div').text.strip()
-    else:
-        beauty = "Не найдено"
+    beauty = "Не найдено"
+    for item in stat_items:
+        if 'Красота:' in item.text:
+            beauty = item.text.strip().split('Красота:')[-1].strip()
+            break
 
     # Получаем монеты
-    coins = soup.find('div', class_='stat_item', string=lambda text: text and 'Монеты:' in text)
-    if coins:
-        coins = coins.find_next('div').text.strip()
-    else:
-        coins = "Не найдено"
+    coins = "Не найдено"
+    for item in stat_items:
+        if 'Монеты:' in item.text:
+            coins = item.text.strip().split('Монеты:')[-1].strip()
+            break
 
     # Получаем сердечки
-    hearts = soup.find('div', class_='stat_item', string=lambda text: text and 'Сердечки:' in text)
-    if hearts:
-        hearts = hearts.find_next('div').text.strip()
-    else:
-        hearts = "Не найдено"
+    hearts = "Не найдено"
+    for item in stat_items:
+        if 'Сердечки:' in item.text:
+            hearts = item.text.strip().split('Сердечки:')[-1].strip()
+            break
 
     # Получаем информацию о VIP-аккаунте
-    vip_status = soup.find('div', class_='stat_item', string=lambda text: text and 'VIP-аккаунт:' in text)
-    if vip_status:
-        vip_status = vip_status.find_next('div').text.strip()
-    else:
-        vip_status = "Не найдено"
+    vip_status = "Не найдено"
+    for item in stat_items:
+        if 'VIP-аккаунт:' in item.text:
+            vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
+            break
 
     stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
     stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
