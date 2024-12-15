@@ -11,6 +11,7 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] - %(levelname)s - 
 
 # Глобальная переменная для хранения сессий пользователей
 user_sessions = {}
+user_tasks = {}  # Словарь для хранения задач пользователей
 
 # Функция для выполнения перехода по URL
 async def visit_url(session, url):
@@ -91,7 +92,7 @@ async def set_cookies(update: Update, context: CallbackContext):
         await update.message.reply_text("Куки успешно получены и сессия авторизована!")
         
         # Запускаем автоматические действия для этого пользователя
-        await auto_actions(user_id)
+        user_tasks[user_id] = asyncio.create_task(auto_actions(user_id))
 
     except Exception as e:
         logging.error(f"Ошибка при обработке куков: {e}")
@@ -104,7 +105,7 @@ async def auto_actions(user_id):
         logging.error(f"Сессия для пользователя {user_id} не найдена.")
         return
     
-    while True:
+    while user_id in user_sessions:  # Переходы будут выполняться, пока сессия существует
         # Переходы по ссылкам 6 раз
         for _ in range(6):
             await visit_url(session, "https://mpets.mobi/?action=food")
@@ -150,8 +151,11 @@ async def stats(update: Update, context: CallbackContext):
 async def stop(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if user_id in user_sessions:
-        # Удаляем сессию для пользователя
+        # Удаляем сессию для пользователя и отменяем задачу
         del user_sessions[user_id]
+        if user_id in user_tasks:
+            user_tasks[user_id].cancel()  # Прерываем задачу переходов
+            del user_tasks[user_id]
         await update.message.reply_text("Сессия остановлена. Вы можете ввести новые куки для другого аккаунта.")
     else:
         await update.message.reply_text("Сессия не найдена. Сначала отправьте куки для авторизации.")
