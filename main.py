@@ -179,6 +179,24 @@ def start_session_with_cookies(update, context, cookies_str):
 
     return session, response
 
+# Проверка выставки
+def check_show(session):
+    url = "https://mpets.mobi/show?start=1"
+    logging.info(f"Проверка выставки по ссылке: {url}")
+    response = session.get(url)
+    
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить страницу выставки. Статус: {response.status_code}")
+        return False
+
+    # Проверяем, есть ли на странице текст "Сейчас вы на X месте"
+    if "Сейчас вы на" in response.text:
+        logging.info("Вы на выставке, переходим по ссылке 6 раз.")
+        return True
+
+    logging.info("Вы не на выставке.")
+    return False
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
@@ -190,7 +208,7 @@ async def start(update: Update, context: CallbackContext) -> int:
 # Обработка получения cookies от пользователя
 async def cookies(update: Update, context: CallbackContext) -> int:
     cookies_str = update.message.text.strip()
-    
+
     logging.info(f"Пользователь отправил cookies: {cookies_str}")
 
     if not cookies_str:
@@ -204,6 +222,13 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         return COOKIES
 
     await update.message.reply_text("Авторизация успешна! Теперь выполняем проверки.")
+
+    # Проверка выставки
+    if check_show(session):
+        # Переходим по ссылке 6 раз, если выставка найдена
+        for _ in range(6):
+            session.get("https://mpets.mobi/show")
+        await update.message.reply_text("Вы посетили выставку 6 раз.")
 
     # Проверка состояния сна питомца
     logging.info("Проверка состояния сна питомца.")
