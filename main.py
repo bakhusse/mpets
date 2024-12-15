@@ -67,6 +67,24 @@ def parse_cookies(cookies_data):
     
     return cookies_dict
 
+# Проверка выставки
+def check_show(session):
+    url = "https://mpets.mobi/show?start=1"
+    logging.info(f"Проверка выставки по ссылке: {url}")
+    response = session.get(url)
+    
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить страницу выставки. Статус: {response.status_code}")
+        return False
+    
+    # Проверка, на каком месте находится питомец
+    if "Сейчас вы на Х месте" in response.text:
+        logging.info("Выставка найдена, переходим по ссылке 6 раз.")
+        return True
+    
+    logging.info("Выставка не найдена.")
+    return False
+
 # Функция для извлечения времени сна питомца
 def extract_sleep_time(page_html):
     """
@@ -281,59 +299,22 @@ async def cookies(update: Update, context: CallbackContext) -> int:
                 play_url = "https://mpets.mobi" + play_link["href"]
                 session.get(play_url)
             await update.message.reply_text("Питомец поиграл.")
-
-    # Проверка поляны
-    glade_check = check_glade(session)
-    if glade_check is True:
-        logging.info("Переход по ссылке для поиска семян на поляне.")
-        for _ in range(6):  # Переход по ссылке поиска семян 6 раз
-            session.get(f"https://mpets.mobi/glade_dig")
-        await update.message.reply_text("Вы нашли семена на поляне!")
-    elif isinstance(glade_check, int):
-        await update.message.reply_text(f"Невозможно найти семена на поляне. Ожидайте {glade_check // 3600}ч {(glade_check % 3600) // 60}м.")
-        await asyncio.sleep(glade_check)
-        await update.message.reply_text("Время ожидания прошло. Ищем семена на поляне.")
-        for _ in range(6):  # Переход по ссылке поиска семян 6 раз
-            session.get(f"https://mpets.mobi/glade_dig")
-        await update.message.reply_text("Вы нашли семена на поляне!")
-
-    # Проверка прогулки
-    logging.info("Проверка прогулки.")
-    travel_time = check_travel(session)
-    if travel_time:
-        await update.message.reply_text(f"Питомец гуляет. Ожидайте {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
-        await asyncio.sleep(travel_time)
-    else:
-        logging.info("Питомец не гуляет, отправляем его на прогулку.")
-        for i in range(10, 0, -1):
-            session.get(f"https://mpets.mobi/go_travel?id={i}")
-        await update.message.reply_text("Питомец сходил на прогулку.")
-
-    # Проверка оставшегося времени (сон, поляна, прогулка)
-    remaining_time = check_remaining_time(session)
-    for action, time_left in remaining_time.items():
-        if action == "sleep":
-            await update.message.reply_text(f"Питомец проснется через {time_left // 3600}ч {(time_left % 3600) // 60}м.")
-        elif action == "glade":
-            await update.message.reply_text(f"На поляне нужно подождать {time_left // 3600}ч {(time_left % 3600) // 60}м.")
-        elif action == "travel":
-            await update.message.reply_text(f"До конца прогулки осталось {time_left // 3600}ч {(time_left % 3600) // 60}м.")
-
+    
     return ConversationHandler.END
 
 # Основная функция для запуска бота
 def main():
     application = Application.builder().token(TOKEN).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+    conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
         states={
             COOKIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, cookies)],
         },
         fallbacks=[],
     )
 
-    application.add_handler(conv_handler)
+    application.add_handler(conversation_handler)
     application.run_polling()
 
 if __name__ == '__main__':
