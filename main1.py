@@ -1,135 +1,198 @@
-import requests
-import socket
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackContext
-import logging
 import asyncio
-import nest_asyncio
-import colorlog  # Для цветного логирования
+import logging
+import json
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from aiohttp import ClientSession, CookieJar
+from bs4 import BeautifulSoup
 
-# Состояния для ConversationHandler
-LOGIN, PASSWORD, CAPTCHA = range(3)
+# Установите ваш токен бота
+TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
 
-# Ваш токен Telegram-бота
-TOKEN = '7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4'
+# Настройка логирования
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Настройка цветного логирования
-log_formatter = colorlog.ColoredFormatter(
-    '%(log_color)s[%(asctime)s] - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    log_colors={
-        'DEBUG': 'blue',
-        'INFO': 'green',
-        'WARNING': 'yellow',
-        'ERROR': 'red',
-        'CRITICAL': 'bold_red',
-    }
-)
+# Глобальные переменные для хранения сессий и cookies по пользователям
+user_sessions = {}
 
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
+# Функция для отправки сообщений
+async def send_message(update: Update, text: str):
+    await update.message.reply_text(text)
 
-logging.getLogger().addHandler(console_handler)
-logging.getLogger().setLevel(logging.DEBUG)
+# Команда старт для начала работы с ботом
+async def start(update: Update, context: CallbackContext):
+    await update.message.reply_text("Привет! Отправьте куки в формате JSON для авторизации.")
 
-# Функция для получения публичного IP через внешний сервис
-def get_public_ip():
-    try:
-        response = requests.get('https://api.ipify.org?format=json')
-        ip = response.json()['ip']
-        return ip
-    except requests.RequestException as e:
-        logging.error(f"Не удалось получить публичный IP: {e}")
-        return None
-
-# Функция для получения локального IP (если нужно)
-def get_local_ip():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))  # Можно подключиться к Google DNS для определения IP
-        local_ip = s.getsockname()[0]
-        s.close()
-        return local_ip
-    except Exception as e:
-        logging.error(f"Не удалось получить локальный IP: {e}")
-        return None
-
-# Функция для авторизации (все действия с авторизацией будут здесь)
-async def authorize(update: Update, context: CallbackContext):
-    # Тут будет код авторизации, возможно с использованием сессий и ввода логина/пароля/капчи
-    await update.message.reply_text("Процесс авторизации начнется.")
-    return LOGIN
-
-# Обработка команды /start
-async def start(update: Update, context: CallbackContext) -> int:
-    logging.info("Начало процесса авторизации.")
-    
-    # Получаем публичный IP сервера
-    public_ip = get_public_ip()
-    
-    if public_ip:
-        ip_message = f"Привет! Мой публичный IP адрес: {public_ip}"
+# Команда остановки сессии
+async def stop(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id in user_sessions:
+        # Закрываем сессию пользователя
+        session = user_sessions[user_id]['session']
+        await session.__aexit__(None, None, None)
+        del user_sessions[user_id]
+        await update.message.reply_text("Сессия остановлена, отправьте новые куки для другого аккаунта.")
     else:
-        ip_message = "Привет! Не удалось получить публичный IP адрес."
+        await update.message.reply_text("Сессия не найдена. Отправьте куки для авторизации.")
+
+# Функция для обработки куки и авторизации
+async def set_cookies(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    try:
+        cookies_json = update.message.text.strip()
+        if not cookies_json:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+
+        cookies = json.loads(cookies_json)
+        if not cookies:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+    except json.JSONDecodeError:
+        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+        return
+
+    # Создаём объект CookieJar для хранения и отправки куков
+    jar = CookieJar()
+    for cookie in cookies:
+        jar.update_cookies({cookie['name']: cookie['value']})
+
+    # Создаём сессию для данного пользователя
+    session = ClientSession(cookie_jar=jar)
+    await session.__aenter__()
+
+    # Сохраняем сессию в словарь с ключом user_id
+    user_sessions[user_id] = {'session': session, 'cookies': cookies}
+
+    await update.message.reply_text("Куки получены, сессия начата!")
+
+    # Автоматизация действий
+    asyncio.create_task(auto_actions(user_id))
+
+# Функция для получения статистики питомца
+async def get_pet_stats(user_id):
+    if user_id not in user_sessions:
+        return "Сессия не установлена."
+
+    session = user_sessions[user_id]['session']
+    url = "https://mpets.mobi/profile"
+    async with session.get(url) as response:
+        if response.status != 200:
+            return f"Ошибка при загрузке страницы профиля: {response.status}"
+
+        page = await response.text()
+    soup = BeautifulSoup(page, 'html.parser')
+
+    # Парсим страницу, чтобы извлечь информацию о питомце
+    stat_items = soup.find_all('div', class_='stat_item')
     
-    await update.message.reply_text(ip_message)
-    
-    # Запуск авторизации
-    await authorize(update, context)
-    
-    return LOGIN  # Возвращаемся к состоянию LOGIN для ввода логина
+    if not stat_items:
+        return "Не удалось найти элементы статистики."
 
-# Функция для обработки ввода логина (пример)
-async def login(update: Update, context: CallbackContext) -> int:
-    user_login = update.message.text
-    # Тут будет логика обработки логина
-    await update.message.reply_text(f"Вы ввели логин: {user_login}")
-    return PASSWORD
+    pet_name = stat_items[0].find('a', class_='darkgreen_link')
+    if not pet_name:
+        return "Не удалось найти имя питомца."
+    pet_name = pet_name.text.strip()
 
-# Функция для обработки ввода пароля (пример)
-async def password(update: Update, context: CallbackContext) -> int:
-    user_password = update.message.text
-    # Тут будет логика обработки пароля
-    await update.message.reply_text(f"Вы ввели пароль: {user_password}")
-    return CAPTCHA
+    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
 
-# Функция для обработки ввода капчи (пример)
-async def captcha(update: Update, context: CallbackContext) -> int:
-    captcha_solution = update.message.text
-    # Тут будет логика обработки капчи
-    await update.message.reply_text(f"Вы ввели капчу: {captcha_solution}")
-    # Переход к следующему этапу, если авторизация успешна
-    await update.message.reply_text("Авторизация прошла успешно!")
-    return ConversationHandler.END
+    experience = "Не найдено"
+    for item in stat_items:
+        if 'Опыт:' in item.text:
+            experience = item.text.strip().split('Опыт:')[-1].strip()
+            break
 
-# Функция для отмены процесса авторизации
-async def cancel(update: Update, context: CallbackContext) -> int:
-    await update.message.reply_text("Процесс авторизации был отменен.")
-    return ConversationHandler.END
+    beauty = "Не найдено"
+    for item in stat_items:
+        if 'Красота:' in item.text:
+            beauty = item.text.strip().split('Красота:')[-1].strip()
+            break
 
-# Главная функция
+    coins = "Не найдено"
+    for item in stat_items:
+        if 'Монеты:' in item.text:
+            coins = item.text.strip().split('Монеты:')[-1].strip()
+            break
+
+    hearts = "Не найдено"
+    for item in stat_items:
+        if 'Сердечки:' in item.text:
+            hearts = item.text.strip().split('Сердечки:')[-1].strip()
+            break
+
+    vip_status = "Не найдено"
+    for item in stat_items:
+        if 'VIP-аккаунт:' in item.text:
+            vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
+            break
+
+    stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
+    stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
+    stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
+    stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
+
+    return stats
+
+# Команда для получения статистики питомца
+async def stats(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    stats = await get_pet_stats(user_id)
+    await send_message(update, stats)
+
+# Функция для перехода по ссылкам
+async def visit_url(session, url):
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                logging.info(f"Переход по {url} прошел успешно!")
+            else:
+                logging.error(f"Ошибка при переходе по {url}: {response.status}")
+    except Exception as e:
+        logging.error(f"Ошибка при запросе к {url}: {e}")
+
+# Функция для автоматических действий
+async def auto_actions(user_id):
+    if user_id not in user_sessions:
+        return
+
+    session = user_sessions[user_id]['session']
+    actions = [
+        "https://mpets.mobi/?action=food",
+        "https://mpets.mobi/?action=play",
+        "https://mpets.mobi/show",
+        "https://mpets.mobi/glade_dig",
+        "https://mpets.mobi/show_coin_get"
+    ]
+
+    while True:
+        for action in actions[:4]:
+            for _ in range(6):
+                await visit_url(session, action)
+                await asyncio.sleep(1)
+
+        await visit_url(session, actions[4])
+        for i in range(10, 0, -1):
+            url = f"https://mpets.mobi/go_travel?id={i}"
+            await visit_url(session, url)
+            await asyncio.sleep(1)
+
+        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+
+# Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
 
-    # Обработчики команд и состояний
-    conversation_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
-            PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, password)],
-            CAPTCHA: [MessageHandler(filters.TEXT & ~filters.COMMAND, captcha)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)]
-    )
-
-    application.add_handler(conversation_handler)
+    # Обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
     await application.run_polling()
 
-# Настроим asyncio для работы в Google Colab
-nest_asyncio.apply()
-
-# Запуск бота
-if __name__ == '__main__':
-    asyncio.run(main())
+if __name__ == "__main__":
+    # Применяем nest_asyncio для работы с Google Colab
+    import nest_asyncio
+    nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
+    asyncio.get_event_loop().run_until_complete(main())
