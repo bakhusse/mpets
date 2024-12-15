@@ -69,6 +69,7 @@ async def add_session(update: Update, context: CallbackContext):
                 "cookies": cookies
             }
             await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
+            logging.info(f"Сессия {session_name} добавлена для пользователя {update.message.from_user.username}.")
 
     except json.JSONDecodeError:
         await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
@@ -143,19 +144,22 @@ async def get_user(update: Update, context: CallbackContext):
     session_name = context.args[0]
     user_id = update.message.from_user.id
 
-    if user_id in user_sessions and session_name in user_sessions[user_id]:
-        session_info = user_sessions[user_id][session_name]
-        owner = session_info["owner"]
-        cookies = session_info["cookies"]
-        cookies_text = json.dumps(cookies, indent=4)  # Преобразуем куки в красивый формат
+    if user_id in user_sessions:
+        if session_name in user_sessions[user_id]:
+            session_info = user_sessions[user_id][session_name]
+            owner = session_info["owner"]
+            cookies = session_info["cookies"]
+            cookies_text = json.dumps(cookies, indent=4)  # Преобразуем куки в красивый формат
 
-        response = f"Сессия: {session_name}\n"
-        response += f"Владелец: {owner}\n"
-        response += f"Куки: {cookies_text}"
+            response = f"Сессия: {session_name}\n"
+            response += f"Владелец: {owner}\n"
+            response += f"Куки: {cookies_text}"
 
-        await send_message(update, response)
+            await send_message(update, response)
+        else:
+            await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
     else:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        await update.message.reply_text(f"У вас нет сессий.")
 
 # Функция для получения статистики питомца
 async def get_pet_stats(session: ClientSession):
@@ -216,41 +220,6 @@ async def get_pet_stats(session: ClientSession):
     stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
 
     return stats
-
-# Функция для перехода по ссылкам
-async def visit_url(session: ClientSession, url: str, session_name: str):
-    try:
-        async with session.get(url) as response:
-            if response.status == 200:
-                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
-            else:
-                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
-    except Exception as e:
-        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
-
-# Функция для автоматических действий
-async def auto_actions(session: ClientSession, session_name: str):
-    actions = [
-        "https://mpets.mobi/?action=food",
-        "https://mpets.mobi/?action=play",
-        "https://mpets.mobi/show",
-        "https://mpets.mobi/glade_dig",
-        "https://mpets.mobi/show_coin_get"
-    ]
-
-    while True:
-        for action in actions[:4]:
-            for _ in range(6):
-                await visit_url(session, action, session_name)
-                await asyncio.sleep(1)
-
-        await visit_url(session, actions[4], session_name)
-        for i in range(10, 0, -1):
-            url = f"https://mpets.mobi/go_travel?id={i}"
-            await visit_url(session, url, session_name)
-            await asyncio.sleep(1)
-
-        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
 
 # Основная функция для запуска бота
 async def main():
