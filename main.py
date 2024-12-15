@@ -67,53 +67,25 @@ def parse_cookies(cookies_data):
     
     return cookies_dict
 
-# Проверка выставки
-def check_show(session):
-    url = "https://mpets.mobi/show?start=1"
-    logging.info(f"Проверка выставки по ссылке: {url}")
+# Проверка сна
+def check_sleep(session):
+    url = "https://mpets.mobi/"
+    logging.info(f"Проверка времени сна по ссылке: {url}")
     response = session.get(url)
     
     if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу выставки. Статус: {response.status_code}")
-        return False
+        logging.error(f"Не удалось получить страницу сна. Статус: {response.status_code}")
+        return None
     
-    # Проверка, на каком месте находится питомец
-    if "Сейчас вы на Х месте" in response.text:
-        logging.info("Выставка найдена, переходим по ссылке 6 раз.")
-        return True
-    
-    logging.info("Выставка не найдена.")
-    return False
-
-# Функция для извлечения времени сна питомца
-def extract_sleep_time(page_html):
-    """
-    Функция для извлечения времени сна питомца с HTML страницы.
-    Если питомец спит, возвращает время в секундах.
-    Если питомец не спит, возвращает None.
-    """
-    match = re.search(r"Проснется через (\d+)ч (\d+)м", page_html)
-    
+    match = re.search(r"Проснется через (\d+)ч (\d+)м", response.text)
     if match:
         hours = int(match.group(1))
         minutes = int(match.group(2))
-        return (hours * 3600) + (minutes * 60)
+        total_seconds = (hours * 60 * 60) + (minutes * 60)
+        logging.info(f"Питомец проснется через {hours}ч {minutes}м.")
+        return total_seconds
     
     return None
-
-# Проверка на возможность действия (кормить, играть)
-def check_action_links(page_html):
-    soup = BeautifulSoup(page_html, 'html.parser')
-
-    food_link = soup.find('a', href=re.compile(r'/?action=food&rand=\d+'))
-    play_link = soup.find('a', href=re.compile(r'/?action=play&rand=\d+'))
-
-    action_found = {
-        "food": bool(food_link),
-        "play": bool(play_link)
-    }
-    
-    return action_found, food_link, play_link
 
 # Проверка поляны
 def check_glade(session):
@@ -125,13 +97,6 @@ def check_glade(session):
         logging.error(f"Не удалось получить страницу поляны. Статус: {response.status_code}")
         return None
     
-    soup = BeautifulSoup(response.text, 'html.parser')
-    # Проверка на наличие шанса найти семена
-    if "Шанс найти семена" in response.text:
-        logging.info("Шанс найти семена на поляне!")
-        return True
-    
-    # Если попытки кончились, извлекаем время, когда можно будет снова попытаться
     match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", response.text)
     if match:
         hours = int(match.group(1))
@@ -139,6 +104,7 @@ def check_glade(session):
         total_seconds = (hours * 60 * 60) + (minutes * 60)
         logging.info(f"Попытки закончились, нужно подождать {hours}ч {minutes}м.")
         return total_seconds
+    
     return None
 
 # Проверка прогулки
@@ -151,64 +117,43 @@ def check_travel(session):
         logging.error(f"Не удалось получить страницу прогулки. Статус: {response.status_code}")
         return None
     
-    # Проверка, гуляет ли питомец
-    if "Ваш питомец гуляет" in response.text:
-        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
-        if match:
-            hours = int(match.group(1))
-            minutes = int(match.group(2))
-            total_seconds = (hours * 60 * 60) + (minutes * 60)
-            logging.info(f"Питомец гуляет. Ожидайте {hours}ч {minutes}м.")
-            return total_seconds
-        else:
-            logging.info("Текст о времени прогулки не найден.")
-    else:
-        logging.info("Питомец не гуляет.")
+    match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
+    if match:
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        total_seconds = (hours * 60 * 60) + (minutes * 60)
+        logging.info(f"До конца прогулки осталось {hours}ч {minutes}м.")
+        return total_seconds
     
     return None
 
-# Проверка оставшегося времени для сна, поляны и прогулки
-def check_remaining_time(session):
-    # Проверка сна
-    sleep_url = "https://mpets.mobi/"
-    logging.info(f"Проверка времени сна по ссылке: {sleep_url}")
-    response = session.get(sleep_url)
-    if response.status_code == 200:
-        match = re.search(r"Проснется через (\d+)ч (\d+)м", response.text)
-        if match:
-            hours = int(match.group(1))
-            minutes = int(match.group(2))
-            total_seconds = (hours * 60 * 60) + (minutes * 60)
-            logging.info(f"Питомец проснется через {hours}ч {minutes}м.")
-            return {"sleep": total_seconds}
+# Проверка на семена на поляне
+def find_seeds(session):
+    url = "https://mpets.mobi/glade"
+    logging.info(f"Попытка найти семена по ссылке: {url}")
+    response = session.get(url)
+    
+    if response.status_code != 200:
+        logging.error(f"Не удалось получить страницу поляны для поиска семян. Статус: {response.status_code}")
+        return None
+    
+    # Пытаемся найти семена 6 раз
+    for _ in range(6):
+        session.get(url)
+        logging.info("Попытка найти семена выполнена.")
+    
+    return True
 
-    # Проверка поляны
-    glade_url = "https://mpets.mobi/glade"
-    logging.info(f"Проверка времени поляны по ссылке: {glade_url}")
-    response = session.get(glade_url)
+# Отправка питомца гулять
+def send_pet_to_travel(session):
+    url = "https://mpets.mobi/travel"
+    logging.info(f"Отправляем питомца гулять по ссылке: {url}")
+    response = session.get(url)
     if response.status_code == 200:
-        match = re.search(r"5 попыток закончились, возвращайтесь через (\d+) час (\d+) минут", response.text)
-        if match:
-            hours = int(match.group(1))
-            minutes = int(match.group(2))
-            total_seconds = (hours * 60 * 60) + (minutes * 60)
-            logging.info(f"Попытки закончились. Нужно подождать {hours}ч {minutes}м.")
-            return {"glade": total_seconds}
-
-    # Проверка прогулки
-    travel_url = "https://mpets.mobi/travel"
-    logging.info(f"Проверка времени прогулки по ссылке: {travel_url}")
-    response = session.get(travel_url)
-    if response.status_code == 200:
-        match = re.search(r"До конца прогулки осталось (\d+)ч (\d+)м", response.text)
-        if match:
-            hours = int(match.group(1))
-            minutes = int(match.group(2))
-            total_seconds = (hours * 60 * 60) + (minutes * 60)
-            logging.info(f"До конца прогулки осталось {hours}ч {minutes}м.")
-            return {"travel": total_seconds}
-
-    return {}
+        logging.info("Питомец отправлен гулять.")
+        return True
+    logging.error(f"Не удалось отправить питомца гулять. Статус: {response.status_code}")
+    return False
 
 # Эмуляция сессии через cookies
 def start_session_with_cookies(update, context, cookies_str):
@@ -240,6 +185,10 @@ def start_session_with_cookies(update, context, cookies_str):
 
     return session, response
 
+# Отправка уведомлений в Telegram
+async def send_telegram_notification(update: Update, message: str):
+    await update.message.reply_text(message)
+
 # Обработка команды /start
 async def start(update: Update, context: CallbackContext) -> int:
     logging.info("Начало процесса авторизации через cookies.")
@@ -266,40 +215,46 @@ async def cookies(update: Update, context: CallbackContext) -> int:
 
     await update.message.reply_text("Авторизация успешна! Теперь выполняем проверки.")
 
-    # Проверка выставки
-    if check_show(session):
-        # Переходим по ссылке 6 раз, если выставка найдена
-        for _ in range(6):
-            session.get("https://mpets.mobi/show")
-        await update.message.reply_text("Вы посетили выставку 6 раз.")
-
-    # Проверка состояния сна питомца
-    logging.info("Проверка состояния сна питомца.")
-    sleep_time = extract_sleep_time(response.text)
+    # 1. Проверка сна
+    sleep_time = check_sleep(session)
     
     if sleep_time:
-        await update.message.reply_text(f"Питомец спит. Проснется через {sleep_time // 3600}ч {(sleep_time % 3600) // 60}м.")
+        # Установим таймер
+        await send_telegram_notification(update, f"Питомец спит. Проснется через {sleep_time // 3600}ч {(sleep_time % 3600) // 60}м.")
         await asyncio.sleep(sleep_time)
-        await update.message.reply_text("Питомец проснулся!")
+        await send_telegram_notification(update, "Питомец проснулся!")
     else:
-        # Питомец не спит, выполняем другие действия
-        logging.info("Питомец не спит. Проверяем возможность кормления и игры.")
-        action_found, food_link, play_link = check_action_links(response.text)
-        
-        if action_found["food"]:
-            logging.info("Переход по ссылке кормления.")
-            for _ in range(6):
-                food_url = "https://mpets.mobi" + food_link["href"]
-                session.get(food_url)
-            await update.message.reply_text("Питомец поел.")
+        # Если питомец не спит, проверяем еду, игру и выставку
+        logging.info("Питомец не спит, проверяем еду, игру и выставку.")
+        # Эта часть кода зависит от логики вашего бота для проверки еды, игры и выставки.
+        # Здесь можно добавить соответствующую логику для того, чтобы выполнить проверку этих действий.
 
-        if action_found["play"]:
-            logging.info("Переход по ссылке игры.")
-            for _ in range(6):
-                play_url = "https://mpets.mobi" + play_link["href"]
-                session.get(play_url)
-            await update.message.reply_text("Питомец поиграл.")
+    # 2. Проверка поляны
+    glade_time = check_glade(session)
     
+    if glade_time:
+        # Установим таймер для поляны
+        await send_telegram_notification(update, f"Попытки закончились, возвращайтесь через {glade_time // 3600}ч {(glade_time % 3600) // 60}м.")
+        await asyncio.sleep(glade_time)
+        await send_telegram_notification(update, "Теперь можете вернуться на поляну!")
+    else:
+        # Если поле не закрыто, пробуем найти семена
+        find_seeds(session)
+        await send_telegram_notification(update, "Попытки найти семена выполнены.")
+
+    # 3. Проверка прогулки
+    travel_time = check_travel(session)
+    
+    if travel_time:
+        # Установим таймер для прогулки
+        await send_telegram_notification(update, f"До конца прогулки осталось {travel_time // 3600}ч {(travel_time % 3600) // 60}м.")
+        await asyncio.sleep(travel_time)
+        await send_telegram_notification(update, "Прогулка завершена!")
+    else:
+        # Если прогулка не идет, отправляем питомца гулять
+        send_pet_to_travel(session)
+        await send_telegram_notification(update, "Питомец отправлен гулять.")
+
     return ConversationHandler.END
 
 # Основная функция для запуска бота
