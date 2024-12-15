@@ -168,6 +168,45 @@ async def get_pet_stats(session: ClientSession):
 
     return stats
 
+# Функция для обработки куков и авторизации
+async def set_cookies(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    try:
+        cookies_json = update.message.text.strip()
+        if not cookies_json:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+
+        cookies = json.loads(cookies_json)
+        if not cookies:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+
+        # Создаём объект CookieJar для хранения и отправки куков
+        jar = CookieJar()
+        for cookie in cookies:
+            jar.update_cookies({cookie['name']: cookie['value']})
+
+        session_name = "default"  # Для простоты назовём сессию "default", если не указано иное
+
+        session = ClientSession(cookie_jar=jar)
+        await session.__aenter__()
+
+        # Сохраняем сессию и куки для пользователя
+        if user_id not in user_sessions:
+            user_sessions[user_id] = {}
+
+        if session_name in user_sessions[user_id]:
+            await update.message.reply_text(f"Сессия с именем {session_name} уже существует.")
+        else:
+            user_sessions[user_id][session_name] = session
+            await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
+
+    except json.JSONDecodeError:
+        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+    except Exception as e:
+        await update.message.reply_text(f"Произошла ошибка: {e}")
+
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
@@ -178,6 +217,8 @@ async def main():
     application.add_handler(CommandHandler("remove_session", remove_session))
     application.add_handler(CommandHandler("list_sessions", list_sessions))
     application.add_handler(CommandHandler("stats", stats))
+
+    # Обработчик для куков
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
