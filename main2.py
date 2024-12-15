@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import requests
 import json
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
@@ -73,16 +72,55 @@ async def get_pet_stats():
 
     url = "https://mpets.mobi/profile"
     async with session.get(url, headers=headers) as response:
+        if response.status != 200:
+            return f"Ошибка при загрузке страницы профиля: {response.status}"
+
         page = await response.text()
 
+    # Пытаемся парсить страницу с профилем
     soup = BeautifulSoup(page, 'html.parser')
-    pet_level = soup.find('div', class_='stat_item').text.split(' ')[-2]  # Уровень питомца
-    pet_name = soup.find('a', class_='darkgreen_link').text  # Имя питомца
-    experience = soup.find(text="Опыт:").find_next('div').text.strip()  # Опыт
-    beauty = soup.find(text="Красота:").find_next('div').text.strip()  # Красота
-    coins = soup.find(text="Монеты:").find_next('div').text.strip()  # Монеты
-    hearts = soup.find(text="Сердечки:").find_next('div').text.strip()  # Сердечки
-    vip_status = soup.find(text="VIP-аккаунт:").find_next('div').text.strip()  # VIP статус
+
+    # Получаем никнейм и уровень
+    pet_name = soup.find('a', class_='darkgreen_link')
+    if not pet_name:
+        return "Не удалось найти имя питомца."
+    pet_name = pet_name.text.strip()
+
+    pet_level = soup.find('div', class_='stat_item')
+    if not pet_level:
+        return "Не удалось найти уровень питомца."
+    pet_level = pet_level.text.split(' ')[-2]  # Уровень питомца
+
+    # Получаем другие параметры
+    experience = soup.find(text="Опыт:")
+    if experience:
+        experience = experience.find_next('div').text.strip()
+    else:
+        experience = "Не найдено"
+
+    beauty = soup.find(text="Красота:")
+    if beauty:
+        beauty = beauty.find_next('div').text.strip()
+    else:
+        beauty = "Не найдено"
+
+    coins = soup.find(text="Монеты:")
+    if coins:
+        coins = coins.find_next('div').text.strip()
+    else:
+        coins = "Не найдено"
+
+    hearts = soup.find(text="Сердечки:")
+    if hearts:
+        hearts = hearts.find_next('div').text.strip()
+    else:
+        hearts = "Не найдено"
+
+    vip_status = soup.find(text="VIP-аккаунт:")
+    if vip_status:
+        vip_status = vip_status.find_next('div').text.strip()
+    else:
+        vip_status = "Не найдено"
 
     stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
     stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
