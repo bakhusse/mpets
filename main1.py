@@ -36,7 +36,11 @@ async def get_cookies(update: Update, context: CallbackContext):
 
     try:
         cookies = json.loads(cookies_json)
-        if not cookies:
+        
+        # Извлекаем только name и value
+        cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+
+        if not cookies_dict:
             await update.message.reply_text("Пожалуйста, отправьте валидные куки в формате JSON.")
             return "WAITING_FOR_COOKIES"
     except json.JSONDecodeError:
@@ -44,7 +48,7 @@ async def get_cookies(update: Update, context: CallbackContext):
         return "WAITING_FOR_COOKIES"
 
     # Сохраняем куки в user_data
-    context.user_data['cookies'] = cookies
+    context.user_data['cookies'] = cookies_dict
 
     # Переход к следующему этапу: запрос имени сессии
     await update.message.reply_text("Теперь введите имя для новой сессии.")
@@ -63,8 +67,7 @@ async def get_session_name(update: Update, context: CallbackContext):
     # Создаем сессию и сохраняем её
     cookies = context.user_data['cookies']
     jar = CookieJar()
-    for cookie in cookies:
-        jar.update_cookies({cookie['name']: cookie['value']})
+    jar.update_cookies(cookies)  # Обновляем куки в CookieJar
 
     session = ClientSession(cookie_jar=jar)
     await session.__aenter__()
@@ -193,8 +196,6 @@ async def go(update: Update, context: CallbackContext):
 
     session = user_sessions[session_name]['session']
     user_id = update.message.from_user.id
-
-    # Список ссылок для переходов
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
