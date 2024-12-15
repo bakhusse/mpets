@@ -5,6 +5,7 @@ import json
 import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from bs4 import BeautifulSoup
 from datetime import datetime
 
 # Настройка логирования
@@ -24,42 +25,46 @@ async def visit_url(url):
     except Exception as e:
         logging.error(f"Ошибка при запросе к {url}: {e}")
 
-# Асинхронная функция для перехода по ссылке с числами от 10 до 1 (с задержкой 1 секунда)
-async def travel_ids():
-    for i in range(10, 0, -1):
-        url = f"https://mpets.mobi/go_travel?id={i}"
-        await visit_url(url)
-        await asyncio.sleep(1)  # Пауза 1 секунда между переходами
-
-# Основная функция для автоматических переходов
-async def automate_actions():
-    global session
+# Функция для получения статистики питомца
+async def get_pet_stats():
+    url = "https://mpets.mobi/profile"
+    response = session.get(url)
     
-    # Ссылки для выполнения переходов
-    action_urls = [
-        "https://mpets.mobi/?action=food",
-        "https://mpets.mobi/?action=play",
-        "https://mpets.mobi/show",
-        "https://mpets.mobi/glade_dig",
-        "https://mpets.mobi/show_coin_get"
-    ]
-    
-    # Основной цикл, который выполняет переходы каждую минуту
-    while True:
-        if session:
-            # Переходы по действиям
-            for url in action_urls:
-                for _ in range(6):
-                    await visit_url(url)
-                    await asyncio.sleep(1)  # Переход через 1 секунду
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Извлекаем нужные данные
+        pet_name = soup.find('a', class_='darkgreen_link').text.strip()  # Имя питомца
+        pet_level = soup.find('div', class_='stat_item').text.split(' ')[-2]  # Уровень питомца
+        exp = soup.find_all('div', class_='stat_item')[3].text.strip().split(' ')[-2:]  # Опыт питомца
+        beauty = soup.find_all('div', class_='stat_item')[4].text.strip().split(' ')[-1]  # Красота
+        coins = soup.find_all('div', class_='stat_item')[6].text.strip().split(' ')[-1]  # Монеты
+        hearts = soup.find_all('div', class_='stat_item')[7].text.strip().split(' ')[-1]  # Сердечки
+        vip = soup.find_all('div', class_='stat_item')[1].text.strip().split(':')[-1].strip()  # VIP/Премиум
 
-            # Переход по ссылке с ID от 10 до 1
-            await travel_ids()
+        stats = f"""
+        Никнейм и уровень: {pet_name}, {pet_level} уровень
+        Опыт: {exp[0]} / {exp[1]}
+        Красота: {beauty}
+        Монеты: {coins}
+        Сердечки: {hearts}
+        VIP-аккаунт/Премиум-аккаунт: {vip}
+        """
+        
+        return stats
+    else:
+        logging.error(f"Ошибка при получении профиля питомца. Статус: {response.status_code}")
+        return "Не удалось получить информацию о питомце."
 
-            # Пауза 1 минута между полными циклами
-            await asyncio.sleep(60)
+# Команда /stats для получения статистики питомца
+async def stats(update: Update, context: CallbackContext):
+    if session:
+        stats = await get_pet_stats()  # Получаем статистику
+        await update.message.reply_text(stats)  # Отправляем статистику пользователю
+    else:
+        await update.message.reply_text("Сессия не авторизована. Пожалуйста, отправьте куки для авторизации.")
 
-# Функция для старта автоматизации
+# Функция для старта бота
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text("Привет! Пожалуйста, отправь куки для авторизации.")
 
@@ -80,10 +85,6 @@ async def set_cookies(update: Update, context: CallbackContext):
         # Подтверждаем, что куки получены
         await update.message.reply_text("Куки успешно получены и сессия авторизована!")
 
-        # Запускаем автоматические действия
-        await update.message.reply_text("Автоматические действия начнутся сейчас.")
-        await automate_actions()  # Запуск автоматизации в асинхронном режиме
-
     except Exception as e:
         logging.error(f"Ошибка при обработке куков: {e}")
         await update.message.reply_text("Произошла ошибка при обработке куков. Попробуйте снова.")
@@ -94,6 +95,7 @@ def main():
 
     # Команды бота
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stats", stats))  # Команда /stats
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
