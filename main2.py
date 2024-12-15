@@ -97,7 +97,7 @@ async def set_cookies(update: Update, context: CallbackContext):
         logging.error(f"Ошибка при обработке куков: {e}")
         await update.message.reply_text("Произошла ошибка при обработке куков. Попробуйте снова.")
 
-# Функция для автоматических переходов по ссылкам
+# Функция для старта автоматических переходов по ссылкам
 async def auto_actions(user_id):
     session = user_sessions.get(user_id)
     if not session:
@@ -136,6 +136,16 @@ async def stats(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text("Сессия не авторизована. Пожалуйста, отправьте куки для авторизации.")
 
+# Команда /stop для остановки сессии
+async def stop(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id in user_sessions:
+        # Удаляем сессию для пользователя
+        del user_sessions[user_id]
+        await update.message.reply_text("Сессия остановлена. Вы можете ввести новые куки для другого аккаунта.")
+    else:
+        await update.message.reply_text("Сессия не найдена. Сначала отправьте куки для авторизации.")
+
 # Основная функция для запуска бота
 def main():
     application = Application.builder().token("7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4").build()
@@ -143,6 +153,7 @@ def main():
     # Команды бота
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))  # Команда /stats
+    application.add_handler(CommandHandler("stop", stop))  # Команда /stop
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
