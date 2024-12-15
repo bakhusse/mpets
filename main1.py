@@ -2,7 +2,7 @@ import asyncio
 import logging
 import json
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import Application, CommandHandler, CallbackContext
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
@@ -109,7 +109,7 @@ async def activate_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия {session_name} активирована!")
 
         # Автоматически начать действия после активации сессии
-        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"]))
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
@@ -205,18 +205,18 @@ async def stats(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Функция для перехода по ссылкам
-async def visit_url(session, url):
+async def visit_url(session: ClientSession, url: str, session_name: str):
     try:
         async with session.get(url) as response:
             if response.status == 200:
-                logging.info(f"Переход по {url} прошел успешно!")
+                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
             else:
-                logging.error(f"Ошибка при переходе по {url}: {response.status}")
+                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
     except Exception as e:
-        logging.error(f"Ошибка при запросе к {url}: {e}")
+        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
 
 # Функция для автоматических действий
-async def auto_actions(session):
+async def auto_actions(session: ClientSession, session_name: str):
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -228,13 +228,13 @@ async def auto_actions(session):
     while True:
         for action in actions[:4]:
             for _ in range(6):
-                await visit_url(session, action)
+                await visit_url(session, action, session_name)
                 await asyncio.sleep(1)
 
-        await visit_url(session, actions[4])
+        await visit_url(session, actions[4], session_name)
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
-            await visit_url(session, url)
+            await visit_url(session, url, session_name)
             await asyncio.sleep(1)
 
         await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
