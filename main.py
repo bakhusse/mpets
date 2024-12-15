@@ -87,7 +87,7 @@ def check_sleep(session):
     
     return None
 
-# Проверка поляны
+# Проверка поляны (только один запрос, проверка на попытки)
 def check_glade(session):
     url = "https://mpets.mobi/glade"
     logging.info(f"Проверка поляны по ссылке: {url}")
@@ -105,7 +105,19 @@ def check_glade(session):
         logging.info(f"Попытки закончились, нужно подождать {hours}ч {minutes}м.")
         return total_seconds
     
-    return None
+    return False
+
+# Переход по ссылке на поле для поиска семян
+def dig_for_seeds(session):
+    url = "https://mpets.mobi/glade_dig"
+    logging.info(f"Переход по ссылке для поиска семян: {url}")
+    response = session.get(url)
+    
+    if response.status_code == 200:
+        logging.info("Перешли на страницу для поиска семян.")
+        return True
+    logging.error(f"Не удалось перейти на страницу для поиска семян. Статус: {response.status_code}")
+    return False
 
 # Проверка прогулки
 def check_travel(session):
@@ -126,23 +138,6 @@ def check_travel(session):
         return total_seconds
     
     return None
-
-# Проверка на семена на поляне
-def find_seeds(session):
-    url = "https://mpets.mobi/glade"
-    logging.info(f"Попытка найти семена по ссылке: {url}")
-    response = session.get(url)
-    
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу поляны для поиска семян. Статус: {response.status_code}")
-        return None
-    
-    # Пытаемся найти семена 6 раз
-    for _ in range(6):
-        session.get(url)
-        logging.info("Попытка найти семена выполнена.")
-    
-    return True
 
 # Отправка питомца гулять
 def send_pet_to_travel(session):
@@ -219,7 +214,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         # Эта часть кода зависит от логики вашего бота для проверки еды, игры и выставки.
         # Здесь можно добавить соответствующую логику для того, чтобы выполнить проверку этих действий.
 
-    # 2. Проверка поляны
+    # 2. Проверка поляны (только один запрос)
     glade_time = check_glade(session)
     
     if glade_time:
@@ -228,9 +223,9 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await asyncio.sleep(glade_time)
         await send_telegram_notification(update, "Теперь можете вернуться на поляну!")
     else:
-        # Если поле не закрыто, пробуем найти семена
-        find_seeds(session)
-        await send_telegram_notification(update, "Попытки найти семена выполнены.")
+        # Если попытки не закончились, пробуем перейти на страницу для поиска семян
+        if dig_for_seeds(session):
+            await send_telegram_notification(update, "Переход на страницу для поиска семян выполнен.")
 
     # 3. Проверка прогулки
     travel_time = check_travel(session)
