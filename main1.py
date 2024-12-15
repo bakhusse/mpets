@@ -21,7 +21,7 @@ async def send_message(update: Update, text: str):
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Привет! Управляйте сессиями с помощью команд:\n"
+    await update.message.reply_text("Привет! Управляй сессиями с помощью команд:\n"
                                     "/add_session - добавить новую сессию\n"
                                     "/remove_session - удалить сессию\n"
                                     "/list_sessions - посмотреть все сессии\n"
@@ -105,7 +105,10 @@ async def activate_session(update: Update, context: CallbackContext):
 
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = True
-        await update.message.reply_text(f"Сессия {session_name} активирована.")
+        await update.message.reply_text(f"Сессия {session_name} активирована!")
+
+        # Автоматически начать действия после активации сессии
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"]))
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
@@ -124,88 +127,40 @@ async def deactivate_session(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Команда для получения статистики питомца
-async def stats(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /stats <имя_сессии>")
-        return
+# Функция для перехода по ссылкам
+async def visit_url(session, url):
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                logging.info(f"Переход по {url} прошел успешно!")
+            else:
+                logging.error(f"Ошибка при переходе по {url}: {response.status}")
+    except Exception as e:
+        logging.error(f"Ошибка при запросе к {url}: {e}")
 
-    session_name = context.args[0]
+# Функция для автоматических действий
+async def auto_actions(session: ClientSession):
+    actions = [
+        "https://mpets.mobi/?action=food",
+        "https://mpets.mobi/?action=play",
+        "https://mpets.mobi/show",
+        "https://mpets.mobi/glade_dig",
+        "https://mpets.mobi/show_coin_get"
+    ]
 
-    if user_id not in user_sessions or session_name not in user_sessions[user_id]:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-        return
+    while True:
+        for action in actions[:4]:
+            for _ in range(6):
+                await visit_url(session, action)
+                await asyncio.sleep(1)
 
-    session = user_sessions[user_id][session_name]
+        await visit_url(session, actions[4])
+        for i in range(10, 0, -1):
+            url = f"https://mpets.mobi/go_travel?id={i}"
+            await visit_url(session, url)
+            await asyncio.sleep(1)
 
-    # Проверяем, активна ли сессия
-    if not session["active"]:
-        await update.message.reply_text(f"Сессия {session_name} не активна.")
-        return
-
-    stats = await get_pet_stats(session["session"])
-    await send_message(update, stats)
-
-# Функция для получения статистики питомца
-async def get_pet_stats(session: ClientSession):
-    url = "https://mpets.mobi/profile"
-    async with session.get(url) as response:
-        if response.status != 200:
-            return f"Ошибка при загрузке страницы профиля: {response.status}"
-
-        page = await response.text()
-    soup = BeautifulSoup(page, 'html.parser')
-
-    # Парсим страницу, чтобы извлечь информацию о питомце
-    stat_items = soup.find_all('div', class_='stat_item')
-
-    if not stat_items:
-        return "Не удалось найти элементы статистики."
-
-    pet_name = stat_items[0].find('a', class_='darkgreen_link')
-    if not pet_name:
-        return "Не удалось найти имя питомца."
-    pet_name = pet_name.text.strip()
-
-    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
-
-    experience = "Не найдено"
-    for item in stat_items:
-        if 'Опыт:' in item.text:
-            experience = item.text.strip().split('Опыт:')[-1].strip()
-            break
-
-    beauty = "Не найдено"
-    for item in stat_items:
-        if 'Красота:' in item.text:
-            beauty = item.text.strip().split('Красота:')[-1].strip()
-            break
-
-    coins = "Не найдено"
-    for item in stat_items:
-        if 'Монеты:' in item.text:
-            coins = item.text.strip().split('Монеты:')[-1].strip()
-            break
-
-    hearts = "Не найдено"
-    for item in stat_items:
-        if 'Сердечки:' in item.text:
-            hearts = item.text.strip().split('Сердечки:')[-1].strip()
-            break
-
-    vip_status = "Не найдено"
-    for item in stat_items:
-        if 'VIP-аккаунт:' in item.text:
-            vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
-            break
-
-    stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
-    stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
-    stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
-    stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
-
-    return stats
+        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
 
 # Основная функция для запуска бота
 async def main():
@@ -218,7 +173,7 @@ async def main():
     application.add_handler(CommandHandler("list_sessions", list_sessions))
     application.add_handler(CommandHandler("activate_session", activate_session))
     application.add_handler(CommandHandler("deactivate_session", deactivate_session))
-    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
     await application.run_polling()
