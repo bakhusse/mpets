@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import json
+import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from aiohttp import ClientSession, CookieJar
@@ -12,12 +13,38 @@ TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
+# Путь к файлу для хранения информации о сессиях
+USERS_FILE = "users.txt"
+
 # Глобальная переменная для хранения сессий пользователей
 user_sessions = {}
 
 # Функция для отправки сообщений
 async def send_message(update: Update, text: str):
     await update.message.reply_text(text)
+
+# Функция для записи информации о сессии в файл
+def write_to_file(session_name, owner, cookies):
+    with open(USERS_FILE, "a") as file:
+        cookies_json = json.dumps(cookies, indent=4)
+        file.write(f"{session_name} | {owner} | {cookies_json}\n")
+
+# Функция для чтения информации о сессии из файла
+def read_from_file(session_name):
+    if not os.path.exists(USERS_FILE):
+        return None
+    
+    with open(USERS_FILE, "r") as file:
+        lines = file.readlines()
+    
+    for line in lines:
+        session_data = line.strip().split(" | ")
+        if session_data[0] == session_name:
+            owner = session_data[1]
+            cookies = json.loads(session_data[2])
+            return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
+    
+    return None
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
@@ -54,6 +81,9 @@ async def add_session(update: Update, context: CallbackContext):
 
         session = ClientSession(cookie_jar=jar)
         await session.__aenter__()
+
+        # Сохраняем сессию и куки в файл
+        write_to_file(session_name, update.message.from_user.username, cookies)
 
         # Сохраняем сессию и куки для пользователя
         if user_id not in user_sessions:
@@ -159,7 +189,20 @@ async def get_user(update: Update, context: CallbackContext):
         else:
             await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
     else:
-        await update.message.reply_text(f"У вас нет сессий.")
+        # Чтение из файла
+        session_data = read_from_file(session_name)
+        if session_data:
+            owner = session_data["owner"]
+            cookies = session_data["cookies"]
+            cookies_text = json.dumps(cookies, indent=4)
+
+            response = f"Сессия: {session_name}\n"
+            response += f"Владелец: {owner}\n"
+            response += f"Куки: {cookies_text}"
+
+            await send_message(update, response)
+        else:
+            await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Функция для получения статистики питомца
 async def get_pet_stats(session: ClientSession):
