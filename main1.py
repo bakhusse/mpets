@@ -35,18 +35,31 @@ def extract_cookies(cookies_text: str):
     try:
         # Преобразуем строку в JSON
         cookies = json.loads(cookies_text)
+        
+        # Проверяем, что полученный объект является списком
+        if not isinstance(cookies, list):
+            logging.error("Введенные данные не являются списком JSON.")
+            return None
+        
         cookies_dict = {}
-
         # Проходим по каждому элементу и извлекаем name и value
         for cookie in cookies:
+            if not isinstance(cookie, dict):
+                logging.error(f"Неверный формат куки: {cookie}")
+                continue
+
             name = cookie.get('name')
             value = cookie.get('value')
+
             if name and value:
                 cookies_dict[name] = value
+            else:
+                logging.warning(f"Кука без имени или значения: {cookie}")
 
         return cookies_dict
 
     except json.JSONDecodeError:
+        logging.error("Не удалось распарсить JSON.")
         return None  # Если JSON не распарсился, возвращаем None
 
 # Получение куков
