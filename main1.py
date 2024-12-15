@@ -50,7 +50,12 @@ async def get_session_name(update: Update, context: CallbackContext):
 
 # Получение куков
 async def get_cookies(update: Update, context: CallbackContext):
-    session_name = context.user_data['session_name']
+    session_name = context.user_data.get('session_name', None)
+    
+    if not session_name:
+        await update.message.reply_text("Ошибка: не было указано имя сессии.")
+        return ConversationHandler.END
+
     cookies_json = update.message.text.strip()
 
     logging.info(f"User {update.message.from_user.id} entered cookies for session '{session_name}'.")
@@ -198,6 +203,7 @@ async def go(update: Update, context: CallbackContext):
     session = user_sessions[session_name]['session']
     user_id = update.message.from_user.id
 
+    # Список ссылок для переходов
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -206,6 +212,7 @@ async def go(update: Update, context: CallbackContext):
         "https://mpets.mobi/show_coin_get"
     ]
 
+    # Переход по ссылке 6 раз
     for action in actions:
         await visit_url(session, action, user_id, session_name)
         await asyncio.sleep(1)  # Задержка 1 секунда между переходами
