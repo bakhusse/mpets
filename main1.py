@@ -22,12 +22,13 @@ async def send_message(update: Update, text: str):
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text("Привет! Управляй сессиями с помощью команд:\n"
-                                    "/add_session - добавить новую сессию\n"
-                                    "/remove_session - удалить сессию\n"
-                                    "/list_sessions - посмотреть все сессии\n"
-                                    "/activate_session - активировать сессию\n"
-                                    "/deactivate_session - деактивировать сессию\n"
+                                    "/add - добавить новую сессию\n"
+                                    "/del - удалить сессию\n"
+                                    "/list - посмотреть все сессии\n"
+                                    "/on - активировать сессию\n"
+                                    "/off - деактивировать сессию\n"
                                     "/stats <имя_сессии> - проверить статистику питомца\n"
+                                    "/get_user <имя_сессии> - узнать владельца сессии и куки\n"
                                     "Отправьте куки в формате JSON для авторизации.")
 
 # Команда для добавления новой сессии
@@ -35,7 +36,7 @@ async def add_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     try:
         if len(context.args) < 2:
-            await update.message.reply_text("Использование: /add_session <имя_сессии> <куки в формате JSON>")
+            await update.message.reply_text("Использование: /add <имя_сессии> <куки в формате JSON>")
             return
 
         session_name = context.args[0]
@@ -61,8 +62,14 @@ async def add_session(update: Update, context: CallbackContext):
         if session_name in user_sessions[user_id]:
             await update.message.reply_text(f"Сессия с именем {session_name} уже существует.")
         else:
-            user_sessions[user_id][session_name] = {"session": session, "active": False}
+            user_sessions[user_id][session_name] = {
+                "session": session,
+                "active": False,
+                "owner": update.message.from_user.username,
+                "cookies": cookies
+            }
             await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
+            logging.info(f"Сессия {session_name} добавлена для пользователя {update.message.from_user.username}.")
 
     except json.JSONDecodeError:
         await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
@@ -73,7 +80,7 @@ async def add_session(update: Update, context: CallbackContext):
 async def remove_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
-        await update.message.reply_text("Использование: /remove_session <имя_сессии>")
+        await update.message.reply_text("Использование: /del <имя_сессии>")
         return
 
     session_name = context.args[0]
@@ -99,7 +106,7 @@ async def list_sessions(update: Update, context: CallbackContext):
 async def activate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
-        await update.message.reply_text("Использование: /activate_session <имя_сессии>")
+        await update.message.reply_text("Использование: /on <имя_сессии>")
         return
 
     session_name = context.args[0]
@@ -117,7 +124,7 @@ async def activate_session(update: Update, context: CallbackContext):
 async def deactivate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
-        await update.message.reply_text("Использование: /deactivate_session <имя_сессии>")
+        await update.message.reply_text("Использование: /off <имя_сессии>")
         return
 
     session_name = context.args[0]
@@ -127,6 +134,32 @@ async def deactivate_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия {session_name} деактивирована.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
+# Команда для получения информации о владельце сессии
+async def get_user(update: Update, context: CallbackContext):
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /get_user <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+    user_id = update.message.from_user.id
+
+    if user_id in user_sessions:
+        if session_name in user_sessions[user_id]:
+            session_info = user_sessions[user_id][session_name]
+            owner = session_info["owner"]
+            cookies = session_info["cookies"]
+            cookies_text = json.dumps(cookies, indent=4)  # Преобразуем куки в красивый формат
+
+            response = f"Сессия: {session_name}\n"
+            response += f"Владелец: {owner}\n"
+            response += f"Куки: {cookies_text}"
+
+            await send_message(update, response)
+        else:
+            await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+    else:
+        await update.message.reply_text(f"У вас нет сессий.")
 
 # Функция для получения статистики питомца
 async def get_pet_stats(session: ClientSession):
@@ -188,35 +221,8 @@ async def get_pet_stats(session: ClientSession):
 
     return stats
 
-# Команда для проверки статистики питомца
-async def stats(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /stats <имя_сессии>")
-        return
-
-    session_name = context.args[0]
-
-    if user_id in user_sessions and session_name in user_sessions[user_id]:
-        session = user_sessions[user_id][session_name]["session"]
-        stats = await get_pet_stats(session)
-        await send_message(update, stats)
-    else:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-
-# Функция для перехода по ссылкам
-async def visit_url(session: ClientSession, url: str, session_name: str):
-    try:
-        async with session.get(url) as response:
-            if response.status == 200:
-                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
-            else:
-                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
-    except Exception as e:
-        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
-
 # Функция для автоматических действий
-async def auto_actions(session: ClientSession, session_name: str):
+async def auto_actions(session, session_name):
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -227,9 +233,8 @@ async def auto_actions(session: ClientSession, session_name: str):
 
     while True:
         for action in actions[:4]:
-            for _ in range(6):
-                await visit_url(session, action, session_name)
-                await asyncio.sleep(1)
+            await visit_url(session, action, session_name)
+            await asyncio.sleep(1)
 
         await visit_url(session, actions[4], session_name)
         for i in range(10, 0, -1):
@@ -239,18 +244,29 @@ async def auto_actions(session: ClientSession, session_name: str):
 
         await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
 
+async def visit_url(session, url, session_name):
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
+            else:
+                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
+    except Exception as e:
+        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
+
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("add_session", add_session))
-    application.add_handler(CommandHandler("remove_session", remove_session))
-    application.add_handler(CommandHandler("list_sessions", list_sessions))
-    application.add_handler(CommandHandler("activate_session", activate_session))
-    application.add_handler(CommandHandler("deactivate_session", deactivate_session))
-    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("add", add_session))
+    application.add_handler(CommandHandler("del", remove_session))
+    application.add_handler(CommandHandler("list", list_sessions))
+    application.add_handler(CommandHandler("on", activate_session))
+    application.add_handler(CommandHandler("off", deactivate_session))
+    application.add_handler(CommandHandler("stats", get_pet_stats))
+    application.add_handler(CommandHandler("get_user", get_user))
 
     # Запуск бота
     await application.run_polling()
