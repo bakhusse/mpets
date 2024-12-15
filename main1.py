@@ -21,56 +21,95 @@ async def send_message(update: Update, text: str):
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("Привет! Отправьте куки в формате JSON для авторизации.")
+    await update.message.reply_text("Привет! Управляйте сессиями с помощью команд:\n"
+                                    "/add_session - добавить новую сессию\n"
+                                    "/remove_session - удалить сессию\n"
+                                    "/list_sessions - посмотреть все сессии\n"
+                                    "Отправьте куки в формате JSON для авторизации.")
 
-# Команда остановки сессии
-async def stop(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    if user_id in user_sessions:
-        session, cookies = user_sessions.pop(user_id)
-        await session.__aexit__(None, None, None)
-        await update.message.reply_text("Сессия остановлена, отправьте новые куки для другого аккаунта.")
-    else:
-        await update.message.reply_text("Сессия не найдена.")
-
-# Функция для обработки куки и авторизации
-async def set_cookies(update: Update, context: CallbackContext):
+# Команда для добавления новой сессии
+async def add_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     try:
-        cookies_json = update.message.text.strip()
-        if not cookies_json:
-            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+        if len(context.args) < 2:
+            await update.message.reply_text("Использование: /add_session <имя_сессии> <куки в формате JSON>")
             return
 
+        session_name = context.args[0]
+        cookies_json = " ".join(context.args[1:])
+        
         cookies = json.loads(cookies_json)
         if not cookies:
             await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
             return
+
+        # Создаём объект CookieJar для хранения и отправки куков
+        jar = CookieJar()
+        for cookie in cookies:
+            jar.update_cookies({cookie['name']: cookie['value']})
+
+        session = ClientSession(cookie_jar=jar)
+        await session.__aenter__()
+
+        # Сохраняем сессию и куки для пользователя
+        if user_id not in user_sessions:
+            user_sessions[user_id] = {}
+
+        if session_name in user_sessions[user_id]:
+            await update.message.reply_text(f"Сессия с именем {session_name} уже существует.")
+        else:
+            user_sessions[user_id][session_name] = session
+            await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
+
     except json.JSONDecodeError:
         await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+    except Exception as e:
+        await update.message.reply_text(f"Произошла ошибка: {e}")
+
+# Команда для удаления сессии
+async def remove_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /remove_session <имя_сессии>")
         return
 
-    # Создаём объект CookieJar для хранения и отправки куков
-    jar = CookieJar()
-    for cookie in cookies:
-        jar.update_cookies({cookie['name']: cookie['value']})
+    session_name = context.args[0]
 
-    session = ClientSession(cookie_jar=jar)
-    await session.__aenter__()
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        session = user_sessions[user_id].pop(session_name)
+        await session.__aexit__(None, None, None)
+        await update.message.reply_text(f"Сессия {session_name} удалена.")
+    else:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-    # Сохраняем сессию и куки для пользователя
-    user_sessions[user_id] = (session, cookies)
-    await update.message.reply_text("Куки получены, сессия начата!")
+# Команда для отображения всех сессий пользователя
+async def list_sessions(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id in user_sessions and user_sessions[user_id]:
+        session_list = "\n".join(user_sessions[user_id].keys())
+        await update.message.reply_text(f"Ваши активные сессии:\n{session_list}")
+    else:
+        await update.message.reply_text("У вас нет активных сессий.")
 
-    # Автоматизация действий
-    asyncio.create_task(auto_actions(user_id))
+# Команда для получения статистики питомца
+async def stats(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /stats <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    if user_id not in user_sessions or session_name not in user_sessions[user_id]:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        return
+
+    session = user_sessions[user_id][session_name]
+    stats = await get_pet_stats(session)
+    await send_message(update, stats)
 
 # Функция для получения статистики питомца
-async def get_pet_stats(user_id: int):
-    if user_id not in user_sessions:
-        return "Сессия не установлена."
-
-    session, _ = user_sessions[user_id]
+async def get_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
     async with session.get(url) as response:
         if response.status != 200:
@@ -81,7 +120,7 @@ async def get_pet_stats(user_id: int):
 
     # Парсим страницу, чтобы извлечь информацию о питомце
     stat_items = soup.find_all('div', class_='stat_item')
-    
+
     if not stat_items:
         return "Не удалось найти элементы статистики."
 
@@ -129,59 +168,15 @@ async def get_pet_stats(user_id: int):
 
     return stats
 
-# Команда для получения статистики питомца
-async def stats(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    stats = await get_pet_stats(user_id)
-    await send_message(update, stats)
-
-# Функция для перехода по ссылкам
-async def visit_url(session, url):
-    try:
-        async with session.get(url) as response:
-            if response.status == 200:
-                logging.info(f"Переход по {url} прошел успешно!")
-            else:
-                logging.error(f"Ошибка при переходе по {url}: {response.status}")
-    except Exception as e:
-        logging.error(f"Ошибка при запросе к {url}: {e}")
-
-# Функция для автоматических действий
-async def auto_actions(user_id: int):
-    if user_id not in user_sessions:
-        return
-
-    session, _ = user_sessions[user_id]
-    
-    actions = [
-        "https://mpets.mobi/?action=food",
-        "https://mpets.mobi/?action=play",
-        "https://mpets.mobi/show",
-        "https://mpets.mobi/glade_dig",
-        "https://mpets.mobi/show_coin_get"
-    ]
-
-    while True:
-        for action in actions[:4]:
-            for _ in range(6):
-                await visit_url(session, action)
-                await asyncio.sleep(1)
-
-        await visit_url(session, actions[4])
-        for i in range(10, 0, -1):
-            url = f"https://mpets.mobi/go_travel?id={i}"
-            await visit_url(session, url)
-            await asyncio.sleep(1)
-
-        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
-
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stop", stop))
+    application.add_handler(CommandHandler("add_session", add_session))
+    application.add_handler(CommandHandler("remove_session", remove_session))
+    application.add_handler(CommandHandler("list_sessions", list_sessions))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
