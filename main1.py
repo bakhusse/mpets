@@ -12,7 +12,7 @@ TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Глобальные переменные для хранения сессий и cookies по именам сессий
+# Глобальные переменные для хранения сессий
 user_sessions = {}
 
 # Состояния для ConversationHandler
@@ -49,6 +49,7 @@ async def get_cookies(update: Update, context: CallbackContext):
     # Сохраняем куки в user_data
     context.user_data['cookies'] = cookies
 
+    # Запрашиваем имя сессии
     await update.message.reply_text("Теперь введите имя для новой сессии.")
     return SESSION_NAME
 
@@ -205,13 +206,11 @@ async def go(update: Update, context: CallbackContext):
         "https://mpets.mobi/show_coin_get"
     ]
 
-    # Переход по ссылке 6 раз
     for action in actions:
         await visit_url(session, action, user_id, session_name)
-        await asyncio.sleep(1)  # Задержка 1 секунда между переходами
+        await asyncio.sleep(1)
 
-    await asyncio.sleep(60)  # Задержка 60 секунд между циклами
-    await go(update, context)  # Повторный цикл
+    await update.message.reply_text(f"Действия с сессией '{session_name}' завершены.")
 
 # Основная функция для запуска бота
 async def main():
