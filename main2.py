@@ -119,6 +119,12 @@ async def auto_actions():
         await visit_url(session, url)
         await asyncio.sleep(1)  # Задержка 1 секунда между переходами
 
+    # Задержка 60 секунд между циклами
+    await asyncio.sleep(60)
+
+    # Повторный цикл
+    await auto_actions()
+
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
@@ -133,4 +139,5 @@ async def main():
     await application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Запускаем только асинхронный цикл, а не создаем новый с asyncio.run()
+    asyncio.get_event_loop().run_until_complete(main())
