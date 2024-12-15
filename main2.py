@@ -36,10 +36,10 @@ async def stop(update: Update, context: CallbackContext):
 async def set_cookies(update: Update, context: CallbackContext):
     global cookies, session
     try:
-        # Получаем аргумент с куками как строку
-        if context.args:
-            cookies_json = context.args[0]  # Получаем куки как строку из первого аргумента
-        else:
+        # Получаем куки из текста сообщения
+        cookies_json = update.message.text.strip()
+
+        if not cookies_json:
             await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
             return
 
