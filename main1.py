@@ -25,6 +25,8 @@ async def start(update: Update, context: CallbackContext):
                                     "/add_session - добавить новую сессию\n"
                                     "/remove_session - удалить сессию\n"
                                     "/list_sessions - посмотреть все сессии\n"
+                                    "/activate_session - активировать сессию\n"
+                                    "/deactivate_session - деактивировать сессию\n"
                                     "Отправьте куки в формате JSON для авторизации.")
 
 # Команда для добавления новой сессии
@@ -58,7 +60,7 @@ async def add_session(update: Update, context: CallbackContext):
         if session_name in user_sessions[user_id]:
             await update.message.reply_text(f"Сессия с именем {session_name} уже существует.")
         else:
-            user_sessions[user_id][session_name] = session
+            user_sessions[user_id][session_name] = {"session": session, "active": False}
             await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
 
     except json.JSONDecodeError:
@@ -77,7 +79,7 @@ async def remove_session(update: Update, context: CallbackContext):
 
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         session = user_sessions[user_id].pop(session_name)
-        await session.__aexit__(None, None, None)
+        await session["session"].__aexit__(None, None, None)
         await update.message.reply_text(f"Сессия {session_name} удалена.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
@@ -86,10 +88,41 @@ async def remove_session(update: Update, context: CallbackContext):
 async def list_sessions(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if user_id in user_sessions and user_sessions[user_id]:
-        session_list = "\n".join(user_sessions[user_id].keys())
+        session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
+                                 for name, session in user_sessions[user_id].items()])
         await update.message.reply_text(f"Ваши активные сессии:\n{session_list}")
     else:
         await update.message.reply_text("У вас нет активных сессий.")
+
+# Команда для активации сессии
+async def activate_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /activate_session <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        user_sessions[user_id][session_name]["active"] = True
+        await update.message.reply_text(f"Сессия {session_name} активирована.")
+    else:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
+# Команда для деактивации сессии
+async def deactivate_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /deactivate_session <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        user_sessions[user_id][session_name]["active"] = False
+        await update.message.reply_text(f"Сессия {session_name} деактивирована.")
+    else:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Команда для получения статистики питомца
 async def stats(update: Update, context: CallbackContext):
@@ -105,7 +138,13 @@ async def stats(update: Update, context: CallbackContext):
         return
 
     session = user_sessions[user_id][session_name]
-    stats = await get_pet_stats(session)
+
+    # Проверяем, активна ли сессия
+    if not session["active"]:
+        await update.message.reply_text(f"Сессия {session_name} не активна.")
+        return
+
+    stats = await get_pet_stats(session["session"])
     await send_message(update, stats)
 
 # Функция для получения статистики питомца
@@ -168,45 +207,6 @@ async def get_pet_stats(session: ClientSession):
 
     return stats
 
-# Функция для обработки куков и авторизации
-async def set_cookies(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    try:
-        cookies_json = update.message.text.strip()
-        if not cookies_json:
-            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
-            return
-
-        cookies = json.loads(cookies_json)
-        if not cookies:
-            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
-            return
-
-        # Создаём объект CookieJar для хранения и отправки куков
-        jar = CookieJar()
-        for cookie in cookies:
-            jar.update_cookies({cookie['name']: cookie['value']})
-
-        session_name = "default"  # Для простоты назовём сессию "default", если не указано иное
-
-        session = ClientSession(cookie_jar=jar)
-        await session.__aenter__()
-
-        # Сохраняем сессию и куки для пользователя
-        if user_id not in user_sessions:
-            user_sessions[user_id] = {}
-
-        if session_name in user_sessions[user_id]:
-            await update.message.reply_text(f"Сессия с именем {session_name} уже существует.")
-        else:
-            user_sessions[user_id][session_name] = session
-            await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
-
-    except json.JSONDecodeError:
-        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
-    except Exception as e:
-        await update.message.reply_text(f"Произошла ошибка: {e}")
-
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
@@ -216,10 +216,9 @@ async def main():
     application.add_handler(CommandHandler("add_session", add_session))
     application.add_handler(CommandHandler("remove_session", remove_session))
     application.add_handler(CommandHandler("list_sessions", list_sessions))
+    application.add_handler(CommandHandler("activate_session", activate_session))
+    application.add_handler(CommandHandler("deactivate_session", deactivate_session))
     application.add_handler(CommandHandler("stats", stats))
-
-    # Обработчик для куков
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
     await application.run_polling()
