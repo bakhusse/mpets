@@ -2,7 +2,7 @@ import asyncio
 import logging
 import json
 import os
-from telegram import Update, InputFile
+from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
@@ -36,13 +36,12 @@ async def start(update: Update, context: CallbackContext):
                                     "/off - деактивировать сессию\n"
                                     "/stats <имя_сессии> - проверить статистику питомца\n"
                                     "/get_user <имя_сессии> - узнать владельца сессии и куки\n"
-                                    "/export - отправить файл с сессиями.")
+                                    "Отправьте куки в формате JSON для авторизации.")
 
 # Функция для чтения данных из файла
-def read_from_file():
-    global user_sessions
+def read_from_file(session_name):
     if not os.path.exists(USERS_FILE):
-        return
+        return None
 
     with open(USERS_FILE, "r") as file:
         lines = file.readlines()
@@ -55,22 +54,16 @@ def read_from_file():
             logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue
 
-        session_name, owner, cookies_json = session_data
+        if session_data[0] == session_name:
+            owner = session_data[1]
+            try:
+                cookies = json.loads(session_data[2])  # Пробуем распарсить куки
+            except json.JSONDecodeError:
+                logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
+                return None  # Возвращаем None, если JSON не валиден
+            return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
 
-        try:
-            cookies = json.loads(cookies_json)  # Пробуем распарсить куки
-        except json.JSONDecodeError:
-            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {cookies_json}")
-            continue
-
-        # Добавляем сессию в глобальное хранилище
-        user_sessions[session_name] = {
-            "owner": owner,
-            "cookies": cookies,
-            "active": False
-        }
-
-    logging.info("Информация о сессиях успешно загружена из файла.")
+    return None
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
@@ -188,6 +181,7 @@ async def deactivate_session(update: Update, context: CallbackContext):
 
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
+    # Проверка, что пользователь имеет разрешение
     user_id = update.message.from_user.id
     if user_id not in ALLOWED_USER_IDS:
         await update.message.reply_text("У вас нет прав на использование этой команды.")
@@ -199,25 +193,18 @@ async def get_user(update: Update, context: CallbackContext):
 
     session_name = context.args[0]
 
-    if session_name in user_sessions:
-        session_data = user_sessions[session_name]
-        await update.message.reply_text(f"Сессия {session_name} принадлежит {session_data['owner']}.")
+    session_info = read_from_file(session_name)
+    if session_info:
+        owner = session_info["owner"]
+        cookies_text = json.dumps(session_info["cookies"], indent=4)  # Преобразуем куки в красивый формат
+
+        response = f"Сессия: {session_name}\n"
+        response += f"Владелец: {owner}\n"
+        response += f"Куки: {cookies_text}"
+
+        await send_message(update, response)
     else:
-        await update.message.reply_text(f"Сессия {session_name} не найдена.")
-
-# Экспорт всех сессий в файл
-async def export_sessions(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    if user_id not in ALLOWED_USER_IDS:
-        await update.message.reply_text("У вас нет прав на использование этой команды.")
-        return
-
-    try:
-        with open(USERS_FILE, "rb") as file:
-            await update.message.reply_document(InputFile(file, filename=USERS_FILE))
-        await update.message.reply_text("Файл с сессиями успешно отправлен.")
-    except FileNotFoundError:
-        await update.message.reply_text("Файл с сессиями не найден.")
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Функция для получения статистики питомца
 async def get_pet_stats(session: ClientSession):
@@ -231,7 +218,7 @@ async def get_pet_stats(session: ClientSession):
 
     # Парсим страницу, чтобы извлечь информацию о питомце
     stat_items = soup.find_all('div', class_='stat_item')
-
+    
     if not stat_items:
         return "Не удалось найти элементы статистики."
 
@@ -279,12 +266,42 @@ async def get_pet_stats(session: ClientSession):
 
     return stats
 
+# Функция для автоматических действий
+async def auto_actions(session, session_name):
+    actions = [
+        "https://mpets.mobi/?action=food",
+        "https://mpets.mobi/?action=play",
+        "https://mpets.mobi/show",
+        "https://mpets.mobi/glade_dig",
+        "https://mpets.mobi/show_coin_get"
+    ]
+
+    while True:
+        for action in actions[:4]:
+            await visit_url(session, action, session_name)
+            await asyncio.sleep(1)
+
+        await visit_url(session, actions[4], session_name)
+        for i in range(10, 0, -1):
+            url = f"https://mpets.mobi/go_travel?id={i}"
+            await visit_url(session, url, session_name)
+            await asyncio.sleep(1)
+
+        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+
+async def visit_url(session, url, session_name):
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
+            else:
+                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
+    except Exception as e:
+        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
+
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
-
-    # Загрузка сессий из файла
-    read_from_file()
 
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
@@ -295,7 +312,6 @@ async def main():
     application.add_handler(CommandHandler("off", deactivate_session))
     application.add_handler(CommandHandler("stats", get_pet_stats))
     application.add_handler(CommandHandler("get_user", get_user))
-    application.add_handler(CommandHandler("export", export_sessions))
 
     # Запуск бота
     await application.run_polling()
