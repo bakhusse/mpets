@@ -127,6 +127,39 @@ async def deactivate_session(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
+# Функция для обработки куки и авторизации
+async def set_cookies(update: Update, context: CallbackContext):
+    # Эта функция будет вызываться, если пользователь отправит куки в формате JSON
+    user_id = update.message.from_user.id
+    try:
+        cookies_json = update.message.text.strip()
+        if not cookies_json:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+
+        cookies = json.loads(cookies_json)
+        if not cookies:
+            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
+            return
+    except json.JSONDecodeError:
+        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+        return
+
+    # Создаём объект CookieJar для хранения и отправки куков
+    jar = CookieJar()
+    for cookie in cookies:
+        jar.update_cookies({cookie['name']: cookie['value']})
+
+    session = ClientSession(cookie_jar=jar)
+    await session.__aenter__()
+
+    # Сохраняем сессию для пользователя
+    if user_id not in user_sessions:
+        user_sessions[user_id] = {}
+
+    user_sessions[user_id]["default_session"] = {"session": session, "active": False}
+    await update.message.reply_text("Куки получены, сессия начата!")
+
 # Функция для перехода по ссылкам
 async def visit_url(session, url):
     try:
