@@ -221,6 +221,39 @@ async def get_pet_stats(session: ClientSession):
 
     return stats
 
+# Функция для автоматических действий
+async def auto_actions(session, session_name):
+    actions = [
+        "https://mpets.mobi/?action=food",
+        "https://mpets.mobi/?action=play",
+        "https://mpets.mobi/show",
+        "https://mpets.mobi/glade_dig",
+        "https://mpets.mobi/show_coin_get"
+    ]
+
+    while True:
+        for action in actions[:4]:
+            await visit_url(session, action, session_name)
+            await asyncio.sleep(1)
+
+        await visit_url(session, actions[4], session_name)
+        for i in range(10, 0, -1):
+            url = f"https://mpets.mobi/go_travel?id={i}"
+            await visit_url(session, url, session_name)
+            await asyncio.sleep(1)
+
+        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+
+async def visit_url(session, url, session_name):
+    try:
+        async with session.get(url) as response:
+            if response.status == 200:
+                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
+            else:
+                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
+    except Exception as e:
+        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
+
 # Основная функция для запуска бота
 async def main():
     application = Application.builder().token(TOKEN).build()
