@@ -8,7 +8,7 @@ from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
 # Установите ваш токен бота
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
 
 # Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
