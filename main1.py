@@ -2,7 +2,7 @@ import asyncio
 import logging
 import json
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, ConversationHandler
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
@@ -15,6 +15,9 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 # Глобальные переменные для хранения сессий и cookies по именам сессий
 user_sessions = {}
 
+# Состояния для ConversationHandler
+SESSION_NAME, COOKIES = range(2)
+
 # Функция для отправки сообщений
 async def send_message(update: Update, text: str):
     await update.message.reply_text(text)
@@ -25,32 +28,38 @@ async def start(update: Update, context: CallbackContext):
 
 # Команда добавления сессии
 async def add_session(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-
-    # Шаг 1: Получить имя сессии
+    # Начинаем разговор с пользователем
     await update.message.reply_text("Введите имя для новой сессии:")
+    return SESSION_NAME
 
-    # Ожидаем имя сессии
-    session_name = await get_user_input(update, "Введите имя для новой сессии:")
+# Получение имени сессии
+async def get_session_name(update: Update, context: CallbackContext):
+    session_name = update.message.text.strip()
 
-    # Шаг 2: Проверяем, не существует ли сессия с таким именем
+    # Проверяем, не существует ли сессия с таким именем
     if session_name in user_sessions:
         await update.message.reply_text(f"Сессия с именем '{session_name}' уже существует. Попробуйте другое имя.")
-        return
+        return SESSION_NAME  # Ожидаем новое имя
 
-    # Шаг 3: Получаем куки
-    await update.message.reply_text(f"Отправьте куки в формате JSON для сессии '{session_name}'.")
+    # Сохраняем имя сессии в user_data
+    context.user_data['session_name'] = session_name
 
-    cookies_json = await get_user_input(update, "Отправьте куки в формате JSON:")
+    await update.message.reply_text(f"Сессия '{session_name}' будет создана. Пожалуйста, отправьте куки в формате JSON для этой сессии.")
+    return COOKIES
+
+# Получение куков
+async def get_cookies(update: Update, context: CallbackContext):
+    session_name = context.user_data['session_name']
+    cookies_json = update.message.text.strip()
 
     try:
         cookies = json.loads(cookies_json)
         if not cookies:
             await update.message.reply_text("Пожалуйста, отправьте валидные куки в формате JSON.")
-            return
+            return COOKIES
     except json.JSONDecodeError:
         await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
-        return
+        return COOKIES
 
     # Создаем объект CookieJar для хранения куков
     jar = CookieJar()
@@ -61,10 +70,11 @@ async def add_session(update: Update, context: CallbackContext):
     session = ClientSession(cookie_jar=jar)
     await session.__aenter__()
 
-    # Сохраняем сессию в словарь с ключом user_id и именем сессии
+    # Сохраняем сессию в словарь с ключом имени сессии
     user_sessions[session_name] = {'session': session, 'cookies': cookies}
 
     await update.message.reply_text(f"Сессия '{session_name}' успешно создана!")
+    return ConversationHandler.END
 
 # Команда удаления сессии
 async def del_session(update: Update, context: CallbackContext):
@@ -87,14 +97,6 @@ async def list_sessions(update: Update, context: CallbackContext):
 
     session_names = "\n".join(user_sessions.keys())
     await update.message.reply_text(f"Доступные сессии:\n{session_names}")
-
-# Функция для получения ввода от пользователя
-async def get_user_input(update: Update, prompt: str):
-    await send_message(update, prompt)
-
-    # Ожидаем текст от пользователя
-    response = await update.message.reply_text("Жду вашего ответа...")
-    return response.text
 
 # Функция для получения статистики питомца
 async def get_pet_stats(session_name):
@@ -176,8 +178,16 @@ async def main():
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("add", add_session))
+    conversation_handler = ConversationHandler(
+        entry_points=[CommandHandler("add", add_session)],
+        states={
+            SESSION_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_session_name)],
+            COOKIES: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_cookies)],
+        },
+        fallbacks=[],
+    )
+
+    application.add_handler(conversation_handler)
     application.add_handler(CommandHandler("del", del_session))
     application.add_handler(CommandHandler("list", list_sessions))
     application.add_handler(CommandHandler("stats", stats))
@@ -186,7 +196,7 @@ async def main():
     await application.run_polling()
 
 if __name__ == "__main__":
-    # Применяем nest_asyncio для работы с Google Colab
+    # Запуск polling без использования asyncio.run()
     import nest_asyncio
     nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
     asyncio.get_event_loop().run_until_complete(main())
