@@ -30,17 +30,24 @@ async def add_session(update: Update, context: CallbackContext):
     await update.message.reply_text("Отправьте куки в формате JSON для новой сессии.")
     return "WAITING_FOR_COOKIES"
 
-# Функция для извлечения куков из текста
+# Функция для извлечения куков из текста в нужном формате
 def extract_cookies(cookies_text: str):
-    cookies = {}
-    # Регулярное выражение для поиска всех пар name=value в куках
-    pattern = re.compile(r'"name"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*"([^"]+)"')
-    
-    matches = pattern.findall(cookies_text)
-    for name, value in matches:
-        cookies[name] = value
-    
-    return cookies
+    try:
+        # Преобразуем строку в JSON
+        cookies = json.loads(cookies_text)
+        cookies_dict = {}
+
+        # Проходим по каждому элементу и извлекаем name и value
+        for cookie in cookies:
+            name = cookie.get('name')
+            value = cookie.get('value')
+            if name and value:
+                cookies_dict[name] = value
+
+        return cookies_dict
+
+    except json.JSONDecodeError:
+        return None  # Если JSON не распарсился, возвращаем None
 
 # Получение куков
 async def get_cookies(update: Update, context: CallbackContext):
