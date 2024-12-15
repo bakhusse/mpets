@@ -251,7 +251,6 @@ async def main():
     application.add_handler(CommandHandler("activate_session", activate_session))
     application.add_handler(CommandHandler("deactivate_session", deactivate_session))
     application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
     await application.run_polling()
