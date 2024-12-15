@@ -81,42 +81,43 @@ async def get_pet_stats():
     soup = BeautifulSoup(page, 'html.parser')
 
     # Получаем никнейм и уровень
-    pet_name = soup.find('a', class_='darkgreen_link')
+    pet_name = soup.find('div', class_='stat_item').find('a', class_='darkgreen_link')
     if not pet_name:
         return "Не удалось найти имя питомца."
     pet_name = pet_name.text.strip()
 
-    pet_level = soup.find('div', class_='stat_item')
-    if not pet_level:
-        return "Не удалось найти уровень питомца."
-    pet_level = pet_level.text.split(' ')[-2]  # Уровень питомца
+    pet_level = soup.find('div', class_='stat_item').text.split(' ')[-2]  # Уровень питомца
 
-    # Получаем другие параметры
-    experience = soup.find(text="Опыт:")
+    # Получаем опыт
+    experience = soup.find('div', class_='stat_item', string=lambda text: text and 'Опыт:' in text)
     if experience:
         experience = experience.find_next('div').text.strip()
     else:
         experience = "Не найдено"
 
-    beauty = soup.find(text="Красота:")
+    # Получаем красоту
+    beauty = soup.find('div', class_='stat_item', string=lambda text: text and 'Красота:' in text)
     if beauty:
         beauty = beauty.find_next('div').text.strip()
     else:
         beauty = "Не найдено"
 
-    coins = soup.find(text="Монеты:")
+    # Получаем монеты
+    coins = soup.find('div', class_='stat_item', string=lambda text: text and 'Монеты:' in text)
     if coins:
         coins = coins.find_next('div').text.strip()
     else:
         coins = "Не найдено"
 
-    hearts = soup.find(text="Сердечки:")
+    # Получаем сердечки
+    hearts = soup.find('div', class_='stat_item', string=lambda text: text and 'Сердечки:' in text)
     if hearts:
         hearts = hearts.find_next('div').text.strip()
     else:
         hearts = "Не найдено"
 
-    vip_status = soup.find(text="VIP-аккаунт:")
+    # Получаем информацию о VIP-аккаунте
+    vip_status = soup.find('div', class_='stat_item', string=lambda text: text and 'VIP-аккаунт:' in text)
     if vip_status:
         vip_status = vip_status.find_next('div').text.strip()
     else:
@@ -128,6 +129,7 @@ async def get_pet_stats():
     stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
 
     return stats
+
 
 # Команда для получения статистики питомца
 async def stats(update: Update, context: CallbackContext):
