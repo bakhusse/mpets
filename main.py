@@ -173,17 +173,7 @@ def start_session_with_cookies(update, context, cookies_str):
     session.cookies.update(cookies_dict)
     logging.info(f"Сессия с cookies: {session.cookies.get_dict()}")
 
-    welcome_url = "https://mpets.mobi/welcome"
-    logging.info(f"Запрос на страницу {welcome_url}")
-    response = session.get(welcome_url)
-    
-    if response.status_code != 200:
-        logging.error(f"Не удалось получить страницу welcome. Статус: {response.status_code}")
-        return None
-    
-    logging.info(f"Сессия сохранена, cookies: {session.cookies.get_dict()}")
-
-    return session, response
+    return session
 
 # Отправка уведомлений в Telegram
 async def send_telegram_notification(update: Update, message: str):
@@ -207,7 +197,7 @@ async def cookies(update: Update, context: CallbackContext) -> int:
         await update.message.reply_text("Ошибка: Пожалуйста, отправьте cookies в правильном формате.")
         return COOKIES
 
-    session, response = start_session_with_cookies(update, context, cookies_str)
+    session = start_session_with_cookies(update, context, cookies_str)
     
     if session is None:
         await update.message.reply_text("Не удалось авторизоваться с предоставленными cookies. Пожалуйста, проверьте их и попробуйте снова.")
