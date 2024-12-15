@@ -6,7 +6,6 @@ import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
 from bs4 import BeautifulSoup
-from datetime import datetime
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] - %(levelname)s - %(message)s')
@@ -56,14 +55,6 @@ async def get_pet_stats():
         logging.error(f"Ошибка при получении профиля питомца. Статус: {response.status_code}")
         return "Не удалось получить информацию о питомце."
 
-# Команда /stats для получения статистики питомца
-async def stats(update: Update, context: CallbackContext):
-    if session:
-        stats = await get_pet_stats()  # Получаем статистику
-        await update.message.reply_text(stats)  # Отправляем статистику пользователю
-    else:
-        await update.message.reply_text("Сессия не авторизована. Пожалуйста, отправьте куки для авторизации.")
-
 # Функция для старта бота
 async def start(update: Update, context: CallbackContext):
     await update.message.reply_text("Привет! Пожалуйста, отправь куки для авторизации.")
@@ -89,6 +80,38 @@ async def set_cookies(update: Update, context: CallbackContext):
         logging.error(f"Ошибка при обработке куков: {e}")
         await update.message.reply_text("Произошла ошибка при обработке куков. Попробуйте снова.")
 
+# Функция для автоматических переходов по ссылкам
+async def auto_actions():
+    while True:
+        # Перейти по ссылке /food
+        await visit_url("https://mpets.mobi/?action=food")
+        # Перейти по ссылке /play
+        await visit_url("https://mpets.mobi/?action=play")
+        # Перейти по ссылке /show
+        await visit_url("https://mpets.mobi/show")
+        # Перейти по ссылке /glade_dig
+        await visit_url("https://mpets.mobi/glade_dig")
+        # Переход по ссылке /wakeup
+        await visit_url("https://mpets.mobi/wakeup")
+        # Переход по ссылке /show_coin_get (один раз)
+        await visit_url("https://mpets.mobi/show_coin_get")
+        
+        # Переход по ссылке go_travel с числами от 10 до 1
+        for i in range(10, 0, -1):
+            url = f"https://mpets.mobi/go_travel?id={i}"
+            await visit_url(url)
+
+        # Задержка 1 минута (для выполнения каждый раз через минуту)
+        await asyncio.sleep(60)
+
+# Команда /stats для получения статистики питомца
+async def stats(update: Update, context: CallbackContext):
+    if session:
+        stats = await get_pet_stats()  # Получаем статистику
+        await update.message.reply_text(stats)  # Отправляем статистику пользователю
+    else:
+        await update.message.reply_text("Сессия не авторизована. Пожалуйста, отправьте куки для авторизации.")
+
 # Основная функция для запуска бота
 def main():
     application = Application.builder().token("7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4").build()
@@ -97,6 +120,9 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))  # Команда /stats
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
+
+    # Запуск задачи для автоматических переходов
+    asyncio.create_task(auto_actions())  # Запуск автоматических действий
 
     # Запуск бота
     application.run_polling()
