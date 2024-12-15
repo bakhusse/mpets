@@ -27,6 +27,7 @@ async def start(update: Update, context: CallbackContext):
                                     "/list_sessions - посмотреть все сессии\n"
                                     "/activate_session - активировать сессию\n"
                                     "/deactivate_session - деактивировать сессию\n"
+                                    "/stats <имя_сессии> - проверить статистику питомца\n"
                                     "Отправьте куки в формате JSON для авторизации.")
 
 # Команда для добавления новой сессии
@@ -127,38 +128,81 @@ async def deactivate_session(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Функция для обработки куки и авторизации
-async def set_cookies(update: Update, context: CallbackContext):
-    # Эта функция будет вызываться, если пользователь отправит куки в формате JSON
-    user_id = update.message.from_user.id
-    try:
-        cookies_json = update.message.text.strip()
-        if not cookies_json:
-            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
-            return
+# Функция для получения статистики питомца
+async def get_pet_stats(session: ClientSession):
+    url = "https://mpets.mobi/profile"
+    async with session.get(url) as response:
+        if response.status != 200:
+            return f"Ошибка при загрузке страницы профиля: {response.status}"
 
-        cookies = json.loads(cookies_json)
-        if not cookies:
-            await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
-            return
-    except json.JSONDecodeError:
-        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+        page = await response.text()
+    soup = BeautifulSoup(page, 'html.parser')
+
+    # Парсим страницу, чтобы извлечь информацию о питомце
+    stat_items = soup.find_all('div', class_='stat_item')
+    
+    if not stat_items:
+        return "Не удалось найти элементы статистики."
+
+    pet_name = stat_items[0].find('a', class_='darkgreen_link')
+    if not pet_name:
+        return "Не удалось найти имя питомца."
+    pet_name = pet_name.text.strip()
+
+    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
+
+    experience = "Не найдено"
+    for item in stat_items:
+        if 'Опыт:' in item.text:
+            experience = item.text.strip().split('Опыт:')[-1].strip()
+            break
+
+    beauty = "Не найдено"
+    for item in stat_items:
+        if 'Красота:' in item.text:
+            beauty = item.text.strip().split('Красота:')[-1].strip()
+            break
+
+    coins = "Не найдено"
+    for item in stat_items:
+        if 'Монеты:' in item.text:
+            coins = item.text.strip().split('Монеты:')[-1].strip()
+            break
+
+    hearts = "Не найдено"
+    for item in stat_items:
+        if 'Сердечки:' in item.text:
+            hearts = item.text.strip().split('Сердечки:')[-1].strip()
+            break
+
+    vip_status = "Не найдено"
+    for item in stat_items:
+        if 'VIP-аккаунт:' in item.text:
+            vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
+            break
+
+    stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
+    stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
+    stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
+    stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
+
+    return stats
+
+# Команда для проверки статистики питомца
+async def stats(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /stats <имя_сессии>")
         return
 
-    # Создаём объект CookieJar для хранения и отправки куков
-    jar = CookieJar()
-    for cookie in cookies:
-        jar.update_cookies({cookie['name']: cookie['value']})
+    session_name = context.args[0]
 
-    session = ClientSession(cookie_jar=jar)
-    await session.__aenter__()
-
-    # Сохраняем сессию для пользователя
-    if user_id not in user_sessions:
-        user_sessions[user_id] = {}
-
-    user_sessions[user_id]["default_session"] = {"session": session, "active": False}
-    await update.message.reply_text("Куки получены, сессия начата!")
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        session = user_sessions[user_id][session_name]["session"]
+        stats = await get_pet_stats(session)
+        await send_message(update, stats)
+    else:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Функция для перехода по ссылкам
 async def visit_url(session, url):
@@ -172,7 +216,7 @@ async def visit_url(session, url):
         logging.error(f"Ошибка при запросе к {url}: {e}")
 
 # Функция для автоматических действий
-async def auto_actions(session: ClientSession):
+async def auto_actions(session):
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -206,13 +250,13 @@ async def main():
     application.add_handler(CommandHandler("list_sessions", list_sessions))
     application.add_handler(CommandHandler("activate_session", activate_session))
     application.add_handler(CommandHandler("deactivate_session", deactivate_session))
+    application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск бота
     await application.run_polling()
 
 if __name__ == "__main__":
-    # Применяем nest_asyncio для работы с Google Colab
     import nest_asyncio
     nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
     asyncio.get_event_loop().run_until_complete(main())
