@@ -122,7 +122,8 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, set_cookies))
 
     # Запуск задачи для автоматических переходов
-    asyncio.create_task(auto_actions())  # Запуск автоматических действий
+    loop = asyncio.get_event_loop()
+    loop.create_task(auto_actions())  # Запуск автоматических действий
 
     # Запуск бота
     application.run_polling()
