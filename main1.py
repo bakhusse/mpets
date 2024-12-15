@@ -49,7 +49,7 @@ async def get_cookies(update: Update, context: CallbackContext):
     # Сохраняем куки в user_data
     context.user_data['cookies'] = cookies
 
-    # Запрашиваем имя сессии
+    # Переход к следующему состоянию: запрос имени сессии
     await update.message.reply_text("Теперь введите имя для новой сессии.")
     return SESSION_NAME
 
@@ -206,9 +206,20 @@ async def go(update: Update, context: CallbackContext):
         "https://mpets.mobi/show_coin_get"
     ]
 
-    for action in actions:
-        await visit_url(session, action, user_id, session_name)
-        await asyncio.sleep(1)
+    # Переход по ссылке 6 раз
+    for action in actions[:4]:
+        for _ in range(6):
+            await visit_url(session, action, user_id, session_name)
+            await asyncio.sleep(1)  # Задержка 1 секунда между переходами
+
+    # Переход по ссылке show_coin_get 1 раз
+    await visit_url(session, actions[4], user_id, session_name)
+
+    # Переход по ссылкам go_travel с id от 10 до 1
+    for i in range(10, 0, -1):
+        url = f"https://mpets.mobi/go_travel?id={i}"
+        await visit_url(session, url, user_id, session_name)
+        await asyncio.sleep(1)  # Задержка 1 секунда между переходами
 
     await update.message.reply_text(f"Действия с сессией '{session_name}' завершены.")
 
