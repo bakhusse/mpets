@@ -28,13 +28,14 @@ async def start(update: Update, context: CallbackContext):
 
 # Команда добавления сессии
 async def add_session(update: Update, context: CallbackContext):
-    # Начинаем разговор с пользователем
+    logging.info(f"User {update.message.from_user.id} started adding a new session.")
     await update.message.reply_text("Введите имя для новой сессии:")
     return SESSION_NAME
 
 # Получение имени сессии
 async def get_session_name(update: Update, context: CallbackContext):
     session_name = update.message.text.strip()
+    logging.info(f"User {update.message.from_user.id} entered session name: {session_name}")
 
     # Проверяем, не существует ли сессия с таким именем
     if session_name in user_sessions:
@@ -51,6 +52,8 @@ async def get_session_name(update: Update, context: CallbackContext):
 async def get_cookies(update: Update, context: CallbackContext):
     session_name = context.user_data['session_name']
     cookies_json = update.message.text.strip()
+
+    logging.info(f"User {update.message.from_user.id} entered cookies for session '{session_name}'.")
 
     try:
         cookies = json.loads(cookies_json)
@@ -203,13 +206,9 @@ async def go(update: Update, context: CallbackContext):
         "https://mpets.mobi/show_coin_get"
     ]
 
-    # Переход по ссылке 6 раз
-    for action in actions[:4]:
+    for action in actions:
         await visit_url(session, action, user_id, session_name)
         await asyncio.sleep(1)  # Задержка 1 секунда между переходами
-
-    # Переход по ссылке show_coin_get 1 раз
-    await visit_url(session, actions[4], user_id, session_name)
 
     # Переход по ссылкам go_travel с id от 10 до 1
     for i in range(10, 0, -1):
@@ -217,11 +216,8 @@ async def go(update: Update, context: CallbackContext):
         await visit_url(session, url, user_id, session_name)
         await asyncio.sleep(1)  # Задержка 1 секунда между переходами
 
-    # Задержка 60 секунд между циклами
-    await asyncio.sleep(60)
-
-    # Повторный цикл
-    await go(update, context)
+    await asyncio.sleep(60)  # Задержка 60 секунд между циклами
+    await go(update, context)  # Повторный цикл
 
 # Основная функция для запуска бота
 async def main():
