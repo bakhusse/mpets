@@ -116,9 +116,12 @@ async def auto_actions(user_id):
             await visit_url(session, "https://mpets.mobi/show")
             await asyncio.sleep(1)  # Задержка 1 секунда
 
+        # Переходы по ссылке glade_dig 6 раз
+        for _ in range(6):
+            await visit_url(session, "https://mpets.mobi/glade_dig")
+            await asyncio.sleep(1)  # Задержка 1 секунда
+        
         # Переходы по ссылкам 1 раз
-        await visit_url(session, "https://mpets.mobi/glade_dig")
-        await asyncio.sleep(1)  # Задержка 1 секунда
         await visit_url(session, "https://mpets.mobi/wakeup")
         await asyncio.sleep(1)  # Задержка 1 секунда
         await visit_url(session, "https://mpets.mobi/show_coin_get")
