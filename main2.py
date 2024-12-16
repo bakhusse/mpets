@@ -162,6 +162,7 @@ async def get_user(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"У вас нет сессий.")
 
+
 # Функция для получения статистики питомца
 async def get_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
