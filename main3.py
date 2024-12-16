@@ -2,10 +2,14 @@ import asyncio
 import logging
 import json
 import os
+from aiohttp import ClientSession, CookieJar
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
-from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
+import nest_asyncio
+
+# Активируем nest_asyncio для работы с асинхронными задачами в Google Colab
+nest_asyncio.apply()
 
 # Установите ваш токен бота
 TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
@@ -179,94 +183,28 @@ async def deactivate_session(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Команда для получения информации о владельце сессии
-async def get_user(update: Update, context: CallbackContext):
-    # Проверка, что пользователь имеет разрешение
-    user_id = update.message.from_user.id
-    if user_id not in ALLOWED_USER_IDS:
-        await update.message.reply_text("У вас нет прав на использование этой команды.")
-        return
-
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /get_user <имя_сессии>")
-        return
-
-    session_name = context.args[0]
-
-    session_info = read_from_file(session_name)
-    if session_info:
-        owner = session_info["owner"]
-        cookies_text = json.dumps(session_info["cookies"], indent=4)  # Преобразуем куки в красивый формат
-
-        response = f"Сессия: {session_name}\n"
-        response += f"Владелец: {owner}\n"
-        response += f"Куки: {cookies_text}"
-
-        await send_message(update, response)
-    else:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-
 # Функция для получения статистики питомца
 async def get_pet_stats(session: ClientSession):
-    url = "https://mpets.mobi/profile"
+    url = "https://mpets.mobi/?action=show"
     async with session.get(url) as response:
         if response.status != 200:
-            return f"Ошибка при загрузке страницы профиля: {response.status}"
-
+            logging.warning(f"Ошибка при запросе статистики: {response.status}")
+            return "Не удалось получить статистику."
         page = await response.text()
-    soup = BeautifulSoup(page, 'html.parser')
 
-    # Парсим страницу, чтобы извлечь информацию о питомце
+    soup = BeautifulSoup(page, 'html.parser')
     stat_items = soup.find_all('div', class_='stat_item')
-    
+
     if not stat_items:
         return "Не удалось найти элементы статистики."
 
     pet_name = stat_items[0].find('a', class_='darkgreen_link')
-    if not pet_name:
-        return "Не удалось найти имя питомца."
-    pet_name = pet_name.text.strip()
-
-    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
-
-    experience = "Не найдено"
-    for item in stat_items:
-        if 'Опыт:' in item.text:
-            experience = item.text.strip().split('Опыт:')[-1].strip()
-            break
-
-    beauty = "Не найдено"
-    for item in stat_items:
-        if 'Красота:' in item.text:
-            beauty = item.text.strip().split('Красота:')[-1].strip()
-            break
-
-    coins = "Не найдено"
-    for item in stat_items:
-        if 'Монеты:' in item.text:
-            coins = item.text.strip().split('Монеты:')[-1].strip()
-            break
-
-    hearts = "Не найдено"
-    for item in stat_items:
-        if 'Сердечки:' in item.text:
-            hearts = item.text.strip().split('Сердечки:')[-1].strip()
-            break
-
-    vip_status = "Не найдено"
-    for item in stat_items:
-        if 'VIP-аккаунт:' in item.text:
-            vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
-            break
-
-    stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
-    stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
-    stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
-    stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
-
+    pet_name = pet_name.text.strip() if pet_name else "Не найдено"
+    
+    stats = f"Никнейм: {pet_name}"
     return stats
 
-# Функция для автоматических действий
+# Функция для выполнения автоматических действий по ссылкам
 async def auto_actions(session, session_name):
     actions = [
         "https://mpets.mobi/?action=food",
@@ -290,3 +228,22 @@ async def auto_actions(session, session_name):
                         logging.info(f"Успешно перешли по ссылке {action} для сессии {session_name}")
             except Exception as e:
                 logging.error(f"Ошибка при выполнении действия для сессии {session_name}: {e}")
+
+# Главная функция для запуска бота
+async def main():
+    application = Application.builder().token(TOKEN).build()
+
+    # Добавление обработчиков команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("add", add_session))
+    application.add_handler(CommandHandler("del", remove_session))
+    application.add_handler(CommandHandler("list", list_sessions))
+    application.add_handler(CommandHandler("on", activate_session))
+    application.add_handler(CommandHandler("off", deactivate_session))
+
+    # Запуск бота
+    await application.run_polling()
+
+# Запуск асинхронной задачи
+if __name__ == "__main__":
+    asyncio.run(main())
