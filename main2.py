@@ -5,6 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
+import nest_asyncio
 
 # Установите ваш токен бота
 TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
@@ -232,17 +233,23 @@ async def auto_actions(session, session_name):
     ]
 
     while True:
-        for action in actions[:4]:
-            await visit_url(session, action, session_name)
-            await asyncio.sleep(1)
+        # Перейдем по ссылкам 6 раз для первых 4-х
+        for i in range(6):
+            for action in actions[:4]:
+                await visit_url(session, action, session_name)
+                await asyncio.sleep(1)
 
+        # Один раз по пятой ссылке
         await visit_url(session, actions[4], session_name)
+
+        # Переход по дополнительным ссылкам
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url, session_name)
             await asyncio.sleep(1)
 
-        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+        # Задержка 1 минута перед новым циклом
+        await asyncio.sleep(60)
 
 async def visit_url(session, url, session_name):
     try:
@@ -272,6 +279,5 @@ async def main():
     await application.run_polling()
 
 if __name__ == "__main__":
-    import nest_asyncio
     nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
     asyncio.get_event_loop().run_until_complete(main())
