@@ -224,6 +224,32 @@ async def get_user(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
+# Команда для поиска сессий по имени пользователя
+async def user_sessions(update: Update, context: CallbackContext):
+    # Проверка, что пользователь имеет разрешение
+    user_id = update.message.from_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        await update.message.reply_text("У вас нет прав на использование этой команды.")
+        return
+        
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /user <имя_пользователя>")
+        return
+
+    username = context.args[0]
+
+    # Ищем сессии по имени пользователя
+    user_sessions_list = []
+    for user_id, sessions in user_sessions.items():
+        for session_name, session_info in sessions.items():
+            if session_info["owner"] == username:
+                user_sessions_list.append(f"{session_name} - {'Активна' if session_info['active'] else 'Неактивна'}")
+
+    if user_sessions_list:
+        await update.message.reply_text(f"Сессии пользователя {username}:\n" + "\n".join(user_sessions_list))
+    else:
+        await update.message.reply_text(f"Пользователь {username} не найден или у него нет сессий.")
+
 # Функция для получения статистики питомца
 async def get_pet_stats(update: Update, context: CallbackContext):
     logging.info("Команда /stats была вызвана")
@@ -385,7 +411,8 @@ async def main():
     application.add_handler(CommandHandler("on", activate_session))
     application.add_handler(CommandHandler("off", deactivate_session))
     application.add_handler(CommandHandler("stats", get_pet_stats))
-    application.add_handler(CommandHandler("get_user", get_user))
+    application.add_handler(CommandHandler("session", get_user))
+    application.add_handler(CommandHandler("user", user_sessions))  # Обработчик для команды /user
 
     # Запуск бота
     await application.run_polling()
