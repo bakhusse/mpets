@@ -210,6 +210,7 @@ async def get_user(update: Update, context: CallbackContext):
 
 # Команда для получения статистики питомца
 async def stats(update: Update, context: CallbackContext):
+    # Проверяем, что команда передана с аргументами
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /stats <имя_сессии>")
         return
@@ -217,7 +218,7 @@ async def stats(update: Update, context: CallbackContext):
     session_name = context.args[0]
     user_id = update.message.from_user.id
 
-    # Проверяем, что сессия существует для данного пользователя
+    # Проверяем, существует ли сессия у пользователя
     if user_id not in user_sessions or session_name not in user_sessions[user_id]:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
         return
@@ -225,80 +226,90 @@ async def stats(update: Update, context: CallbackContext):
     # Получаем куки из сессии
     cookies = user_sessions[user_id][session_name]["cookies"]
 
+    # Если cookies представлены в виде списка, преобразуем их в словарь
+    if isinstance(cookies, list):
+        cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+    else:
+        cookies_dict = cookies
+
     # Создаем новую сессию для статистики
     async with ClientSession(cookie_jar=CookieJar()) as session:
         # Используем куки для авторизации
-        session.cookie_jar.update_cookies(cookies)
-        
+        session.cookie_jar.update_cookies(cookies_dict)
+
         # Получаем статистику питомца
         stats = await fetch_pet_stats(session)
 
+        # Если статистика успешно получена, отправляем её
         if stats:
             await update.message.reply_text(stats)
         else:
             await update.message.reply_text(f"Не удалось получить статистику для сессии {session_name}.")
 
-
-
 # Переименованная функция для получения статистики питомца
 async def fetch_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
-    async with session.get(url) as response:
-        if response.status != 200:
-            return f"Ошибка при загрузке страницы профиля: {response.status}"
+    try:
+        # Отправка GET запроса на страницу профиля питомца
+        async with session.get(url) as response:
+            if response.status != 200:
+                return f"Ошибка при загрузке страницы профиля: {response.status}"
 
-        page = await response.text()
-    soup = BeautifulSoup(page, 'html.parser')
+            page = await response.text()
+            soup = BeautifulSoup(page, 'html.parser')
 
-    # Парсим страницу, чтобы извлечь информацию о питомце
-    stat_items = soup.find_all('div', class_='stat_item')
-    
-    if not stat_items:
-        return "Не удалось найти элементы статистики."
+            # Парсим страницу, чтобы извлечь информацию о питомце
+            stat_items = soup.find_all('div', class_='stat_item')
 
-    pet_name = stat_items[0].find('a', class_='darkgreen_link')
-    if not pet_name:
-        return "Не удалось найти имя питомца."
-    pet_name = pet_name.text.strip()
+            if not stat_items:
+                return "Не удалось найти элементы статистики."
 
-    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
+            # Извлекаем данные о питомце
+            pet_name = stat_items[0].find('a', class_='darkgreen_link')
+            if not pet_name:
+                return "Не удалось найти имя питомца."
+            pet_name = pet_name.text.strip()
 
-    experience = "Не найдено"
-    for item in stat_items:
-        if 'Опыт:' in item.text:
-            experience = item.text.strip().split('Опыт:')[-1].strip()
-            break
+            pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
 
-    beauty = "Не найдено"
-    for item in stat_items:
-        if 'Красота:' in item.text:
-            beauty = item.text.strip().split('Красота:')[-1].strip()
-            break
+            experience = "Не найдено"
+            for item in stat_items:
+                if 'Опыт:' in item.text:
+                    experience = item.text.strip().split('Опыт:')[-1].strip()
+                    break
 
-    coins = "Не найдено"
-    for item in stat_items:
-        if 'Монеты:' in item.text:
-            coins = item.text.strip().split('Монеты:')[-1].strip()
-            break
+            beauty = "Не найдено"
+            for item in stat_items:
+                if 'Красота:' in item.text:
+                    beauty = item.text.strip().split('Красота:')[-1].strip()
+                    break
 
-    hearts = "Не найдено"
-    for item in stat_items:
-        if 'Сердечки:' in item.text:
-            hearts = item.text.strip().split('Сердечки:')[-1].strip()
-            break
+            coins = "Не найдено"
+            for item in stat_items:
+                if 'Монеты:' in item.text:
+                    coins = item.text.strip().split('Монеты:')[-1].strip()
+                    break
 
-    vip_status = "Не найдено"
-    for item in stat_items:
-        if 'VIP-аккаунт:' in item.text:
-            vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
-            break
+            hearts = "Не найдено"
+            for item in stat_items:
+                if 'Сердечки:' in item.text:
+                    hearts = item.text.strip().split('Сердечки:')[-1].strip()
+                    break
 
-    stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
-    stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
-    stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
-    stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
+            vip_status = "Не найдено"
+            for item in stat_items:
+                if 'VIP-аккаунт:' in item.text:
+                    vip_status = item.text.strip().split('VIP-аккаунт:')[-1].strip()
+                    break
 
-    return stats
+            stats = f"Никнейм и уровень: {pet_name}, {pet_level} уровень\n"
+            stats += f"Опыт: {experience}\nКрасота: {beauty}\n"
+            stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
+            stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
+
+            return stats
+    except Exception as e:
+        return f"Произошла ошибка при запросе статистики: {e}"
 
 # Функция для автоматических действий
 async def auto_actions(session, session_name):
