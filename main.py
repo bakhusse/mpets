@@ -371,9 +371,8 @@ async def visit_url(session, url, session_name):
         logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
         
 # Создание и запуск бота
-def start_bot():
-    # Создаем объект приложения
-    application = Application.builder().token(TOKEN).build()
+async def start_bot():
+    application = Application.builder().token("YOUR_BOT_API_TOKEN").build()
 
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
@@ -382,14 +381,12 @@ def start_bot():
     application.add_handler(CommandHandler("list", list_sessions))
     application.add_handler(CommandHandler("on", activate_session))
     application.add_handler(CommandHandler("off", deactivate_session))
-    application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("get_user", get_user))
 
-    # Запускаем бота
-    application.run_polling()
+    await application.run_polling()
 
 # Запуск при старте
 if __name__ == "__main__":
-    asyncio.run(load_sessions_from_file())
-    start_bot()
-
+    # Инициализация асинхронного кода
+    asyncio.run(load_sessions_from_file())  # Загрузка сессий из файла
+    asyncio.run(start_bot())  # Запуск бота
