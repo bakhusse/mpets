@@ -41,41 +41,40 @@ async def start(update: Update, context: CallbackContext):
 # Функция для чтения данных из файла
 def load_sessions_from_file():
     if not os.path.exists(USERS_FILE):
-        logging.info(f"Файл {USERS_FILE} не найден. Создаём новый.")
         return {}
 
+    with open(USERS_FILE, "r") as file:
+        lines = file.readlines()
+
     sessions = {}
-    try:
-        with open(USERS_FILE, "r") as file:
-            lines = file.readlines()
+    for line in lines:
+        session_data = line.strip().split(" | ")
 
-        for line in lines:
-            session_data = line.strip().split(" | ")
+        # Проверка на наличие всех данных
+        if len(session_data) != 4:
+            logging.warning(f"Некорректная строка в файле: {line.strip()}")
+            continue
 
-            # Проверка на наличие всех данных
-            if len(session_data) != 3:
-                logging.warning(f"Некорректная строка в файле: {line.strip()}")
-                continue
+        session_name = session_data[0]
+        owner = session_data[1]
+        user_id = int(session_data[2])  # Преобразуем user_id в целое число
+        try:
+            cookies = json.loads(session_data[3])  # Пробуем распарсить куки
+        except json.JSONDecodeError:
+            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[3]}")
+            continue  # Пропускаем, если JSON не валиден
 
-            session_name = session_data[0]
-            owner = session_data[1]
-            try:
-                cookies = json.loads(session_data[2])  # Пробуем распарсить куки
-            except json.JSONDecodeError:
-                logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
-                continue  # Пропускаем, если JSON не валиден
+        # Добавляем сессию в память
+        if user_id not in sessions:
+            sessions[user_id] = {}
 
-            # Добавляем сессию в память
-            sessions[session_name] = {
-                "owner": owner,
-                "cookies": cookies
-            }
-
-        logging.info(f"Загружено {len(sessions)} сессий из файла.")
-    except Exception as e:
-        logging.error(f"Ошибка при загрузке сессий из файла: {e}")
+        sessions[user_id][session_name] = {
+            "owner": owner,
+            "cookies": cookies
+        }
 
     return sessions
+
     
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, user_id, cookies):
