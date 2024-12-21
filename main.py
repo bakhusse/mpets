@@ -39,13 +39,14 @@ async def start(update: Update, context: CallbackContext):
                                     "Отправьте куки в формате JSON для авторизации.")
 
 # Функция для чтения данных из файла
-def read_from_file(session_name):
+def load_sessions_from_file():
     if not os.path.exists(USERS_FILE):
-        return None
+        return {}
 
     with open(USERS_FILE, "r") as file:
         lines = file.readlines()
 
+    sessions = {}
     for line in lines:
         session_data = line.strip().split(" | ")
 
@@ -54,16 +55,21 @@ def read_from_file(session_name):
             logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue
 
-        if session_data[0] == session_name:
-            owner = session_data[1]
-            try:
-                cookies = json.loads(session_data[2])  # Пробуем распарсить куки
-            except json.JSONDecodeError:
-                logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
-                return None  # Возвращаем None, если JSON не валиден
-            return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
+        session_name = session_data[0]
+        owner = session_data[1]
+        try:
+            cookies = json.loads(session_data[2])  # Пробуем распарсить куки
+        except json.JSONDecodeError:
+            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
+            continue  # Пропускаем, если JSON не валиден
 
-    return None
+        # Добавляем сессию в память
+        sessions[session_name] = {
+            "owner": owner,
+            "cookies": cookies
+        }
+
+    return sessions
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
@@ -82,7 +88,7 @@ async def add_session(update: Update, context: CallbackContext):
 
         session_name = context.args[0]
         cookies_json = " ".join(context.args[1:])
-        
+
         cookies = json.loads(cookies_json)
         if not cookies:
             await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
@@ -333,6 +339,9 @@ async def visit_url(session, url, session_name):
 
 # Основная функция для запуска бота
 async def main():
+    global user_sessions
+    user_sessions = load_sessions_from_file()
+    
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
