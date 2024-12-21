@@ -65,6 +65,50 @@ def read_from_file(session_name):
 
     return None
 
+# Чтение сессий из файла
+def load_sessions_from_file():
+    if not os.path.exists(USERS_FILE):
+        logging.info("Файл с сессиями не найден. Начинаем с пустого набора сессий.")
+        return
+
+    with open(USERS_FILE, "r") as file:
+        lines = file.readlines()
+
+    for line in lines:
+        session_data = line.strip().split(" | ")
+
+        # Проверка на корректность данных
+        if len(session_data) != 3:
+            logging.warning(f"Некорректная строка в файле: {line.strip()}")
+            continue
+
+        session_name = session_data[0]
+        owner = session_data[1]
+        cookies_json = session_data[2]
+
+        try:
+            cookies = json.loads(cookies_json)
+        except json.JSONDecodeError:
+            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {cookies_json}")
+            continue  # Пропускаем эту сессию, если куки невалидны
+
+        # Создаем сессию из cookies
+        jar = CookieJar()
+        for cookie in cookies:
+            jar.update_cookies({cookie['name']: cookie['value']})
+
+        session = ClientSession(cookie_jar=jar)
+        # Добавляем сессию в глобальную переменную
+        user_sessions[owner] = user_sessions.get(owner, {})
+        user_sessions[owner][session_name] = {
+            "session": session,
+            "active": False,
+            "owner": owner,
+            "cookies": cookies
+        }
+
+        logging.info(f"Сессия {session_name} загружена для пользователя {owner}.")
+
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
     with open(USERS_FILE, "a") as file:
@@ -348,7 +392,16 @@ async def main():
     # Запуск бота
     await application.run_polling()
 
+# Запуск сессий при старте
+def start_bot():
+    # Загружаем сессии из файла
+    load_sessions_from_file()
+
+    # Основной код запуска бота
+    logging.info("Бот успешно запущен и сессии загружены.")
+
 if __name__ == "__main__":
+    start_bot()
     import nest_asyncio
     nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
     asyncio.get_event_loop().run_until_complete(main())
