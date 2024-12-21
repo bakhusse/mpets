@@ -322,7 +322,7 @@ async def fetch_pet_stats(session: ClientSession):
         return f"Произошла ошибка при запросе статистики: {e}"
 
 # Функция для автоматических действий
-async def auto_actions(session, session_name):
+async def auto_actions(session_data, session_name):
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -330,39 +330,38 @@ async def auto_actions(session, session_name):
         "https://mpets.mobi/glade_dig",
         "https://mpets.mobi/show_coin_get"
     ]
-    
-    # Преобразуем cookies, если они в списке
-    cookies = session.cookie_jar
-    if isinstance(cookies, list):
-        cookies = convert_cookies_to_dict(cookies)
 
-    while True:
-        for action in actions[:4]:
-            for _ in range(6):  # Повторить переход 6 раз
-                await visit_url(session, action, session_name)
+    # Преобразуем cookies из словаря в формат, поддерживаемый ClientSession
+    cookies = session_data.get("cookies", {})
+
+    # Создаем сессию aiohttp с использованием cookies
+    cookie_jar = CookieJar()
+    for cookie_name, cookie_value in cookies.items():
+        cookie_jar.update_cookies({cookie_name: cookie_value})
+
+    # Создаем новый ClientSession с куки
+    async with ClientSession(cookie_jar=cookie_jar) as session:
+        while True:
+            # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
+            for action in actions[:4]:
+                for _ in range(6):  # Повторить переход 6 раз
+                    await visit_url(session, action, session_name)
+                    await asyncio.sleep(1)
+
+            # Переход по последней ссылке 1 раз
+            await visit_url(session, actions[4], session_name)
+
+            # Переход по дополнительным ссылкам
+            for i in range(10, 0, -1):
+                url = f"https://mpets.mobi/go_travel?id={i}"
+                await visit_url(session, url, session_name)
                 await asyncio.sleep(1)
 
-        await visit_url(session, actions[4], session_name)
-
-        for i in range(10, 0, -1):
-            url = f"https://mpets.mobi/go_travel?id={i}"
-            await visit_url(session, url, session_name)
-            await asyncio.sleep(1)
-
-        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
-
-
-
+            # Пауза между циклами
+            await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+            
 async def visit_url(session, url, session_name):
     try:
-        # Проверим, что cookies в правильном формате
-        cookies = session.cookie_jar
-        if isinstance(cookies, list):
-            cookies = convert_cookies_to_dict(cookies)
-        
-        # Логируем куки для диагностики
-        logging.debug(f"[{session_name}] Cookies: {cookies}")
-        
         # Запрос с использованием правильных куки
         async with session.get(url) as response:
             if response.status == 200:
@@ -371,8 +370,6 @@ async def visit_url(session, url, session_name):
                 logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
     except Exception as e:
         logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
-
-
 
 # Основная функция для запуска бота
 async def main():
