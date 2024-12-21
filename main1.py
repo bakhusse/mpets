@@ -158,11 +158,13 @@ async def activate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = True
         await update.message.reply_text(f"Сессия {session_name} активирована!")
+        logging.info(f"Сессия {session_name} активирована для пользователя {update.message.from_user.username}.")
 
-        # Автоматически начать действия после активации сессии
-        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
+        # Передаем user_id в auto_actions
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name, user_id))
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
 
 async def deactivate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
