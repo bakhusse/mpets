@@ -10,6 +10,9 @@ from bs4 import BeautifulSoup
 # Установите ваш токен бота
 TOKEN = "7689453735:AAHI8OfNGZzOM3fy9RQrXCjYRBHUKCXZAUY"
 
+# Глобальная переменная для хранения сессий пользователей
+user_sessions = {}
+
 # Путь к файлу сессий
 USERS_FILE = "users.txt"
 
@@ -64,13 +67,57 @@ def read_from_file(session_name):
             return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
 
     return None
+# Функция для загрузки сессий из файла
+def load_sessions_from_file():
+    """
+    Загрузить сессии из файла users.txt в память.
+    """
+    if not os.path.exists(USERS_FILE):
+        return  # Если файл не существует, выходим
+
+    with open(USERS_FILE, "r") as file:
+        lines = file.readlines()
+
+    for line in lines:
+        session_data = line.strip().split(" | ")
+        if len(session_data) != 3:
+            continue  # Пропускаем некорректные строки
+
+        session_name, owner, cookies_json = session_data
+        try:
+            cookies = json.loads(cookies_json)
+        except json.JSONDecodeError:
+            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}")
+            continue
+
+        # Добавляем сессию в память
+        if owner not in user_sessions:
+            user_sessions[owner] = {}
+
+        if session_name not in user_sessions[owner]:
+            jar = CookieJar()
+            for cookie in cookies:
+                jar.update_cookies({cookie['name']: cookie['value']})
+
+            session = ClientSession(cookie_jar=jar)
+            user_sessions[owner][session_name] = {
+                "session": session,
+                "active": False,
+                "owner": owner,
+                "cookies": cookies
+            }
+            logging.info(f"Сессия {session_name} загружена для {owner}")
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
+    """
+    Записывает данные о сессии в файл users.txt.
+    """
     with open(USERS_FILE, "a") as file:
         cookies_json = json.dumps(cookies)
         file.write(f"{session_name} | {owner} | {cookies_json}\n")
     logging.info(f"Сессия {session_name} добавлена в файл.")
+
 
 # Команда для добавления новой сессии
 async def add_session(update: Update, context: CallbackContext):
@@ -114,6 +161,12 @@ async def add_session(update: Update, context: CallbackContext):
             write_to_file(session_name, update.message.from_user.username, cookies)
             await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
             logging.info(f"Сессия {session_name} добавлена для пользователя {update.message.from_user.username}.")
+
+    except json.JSONDecodeError:
+        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
+    except Exception as e:
+        await update.message.reply_text(f"Произошла ошибка: {e}")
+
 
     except json.JSONDecodeError:
         await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
@@ -307,6 +360,9 @@ async def visit_url(session, url, session_name):
 
 # Основная функция для запуска бота
 async def main():
+    # Загружаем сессии из файла
+    load_sessions_from_file()
+    
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
