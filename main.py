@@ -8,7 +8,7 @@ from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
 # Установите ваш токен бота
-TOKEN = "7689453735:AAHI8OfNGZzOM3fy9RQrXCjYRBHUKCXZAUY"
+TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
 
 # Путь к файлу сессий
 USERS_FILE = "users.txt"
@@ -39,46 +39,31 @@ async def start(update: Update, context: CallbackContext):
                                     "Отправьте куки в формате JSON для авторизации.")
 
 # Функция для чтения данных из файла
-# Функция для загрузки сессий из файла при старте
-def load_sessions_from_file():
+def read_from_file(session_name):
     if not os.path.exists(USERS_FILE):
-        logging.warning("Файл с пользователями не найден. Создайте файл сессий.")
-        return
+        return None
 
     with open(USERS_FILE, "r") as file:
         lines = file.readlines()
 
     for line in lines:
         session_data = line.strip().split(" | ")
-        
-        # Проверка на корректность данных
+
+        # Проверка на наличие всех данных
         if len(session_data) != 3:
             logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue
 
-        session_name = session_data[0]
-        owner = session_data[1]
-        try:
-            cookies = json.loads(session_data[2])  # Пробуем распарсить куки
-        except json.JSONDecodeError:
-            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
-            continue  # Пропускаем некорректные данные
+        if session_data[0] == session_name:
+            owner = session_data[1]
+            try:
+                cookies = json.loads(session_data[2])  # Пробуем распарсить куки
+            except json.JSONDecodeError:
+                logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
+                return None  # Возвращаем None, если JSON не валиден
+            return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
 
-        # Если пользователь еще не существует в user_sessions, создаём новый словарь для сессий
-        for user_id in ALLOWED_USER_IDS:
-            if user_id not in user_sessions:
-                user_sessions[user_id] = {}
-
-        # Сохраняем сессию в user_sessions
-        user_sessions[user_id][session_name] = {
-            "session": ClientSession(cookie_jar=CookieJar()),
-            "active": False,
-            "owner": owner,
-            "cookies": cookies
-        }
-        
-        # Сессия должна быть активирована или завершена (в зависимости от требований)
-        logging.info(f"Сессия {session_name} для {owner} успешно загружена из файла.")
+    return None
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
@@ -173,14 +158,13 @@ async def activate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = True
         await update.message.reply_text(f"Сессия {session_name} активирована!")
-        logging.info(f"Сессия {session_name} активирована для пользователя {update.message.from_user.username}.")
 
-        # Передаем user_id в auto_actions
-        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name, user_id))
+        # Автоматически начать действия после активации сессии
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-
+# Команда для деактивации сессии
 async def deactivate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
@@ -192,10 +176,8 @@ async def deactivate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = False
         await update.message.reply_text(f"Сессия {session_name} деактивирована.")
-        logging.info(f"Сессия {session_name} была деактивирована для пользователя {update.message.from_user.username}.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-
 
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
@@ -224,36 +206,6 @@ async def get_user(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Команда для получения информации о сессиях пользователя
-async def user_sessions_command(update: Update, context: CallbackContext):
-    # Проверка прав пользователя
-    user_id = update.message.from_user.id
-    if user_id not in ALLOWED_USER_IDS:
-        await update.message.reply_text("У вас нет прав на использование этой команды.")
-        return
-
-    # Проверка, что имя пользователя передано
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /user <имя_пользователя>")
-        return
-
-    username = context.args[0]
-
-    # Проверка наличия сессий для пользователя
-    if username not in user_sessions:
-        await update.message.reply_text(f"Пользователь {username} не найден.")
-        return
-
-    # Собираем информацию о сессиях
-    response = f"Сессии пользователя {username}:\n"
-
-    for session_name, session_data in user_sessions[username].items():
-        # Определяем статус сессии
-        status = "Активна" if session_data["active"] else "Неактивна"
-        response += f"{session_name} - {status}\n"
-
-    # Отправляем сообщение с информацией
-    await update.message.reply_text(response)
 # Функция для получения статистики питомца
 async def get_pet_stats(update: Update, context: CallbackContext):
     logging.info("Команда /stats была вызвана")
@@ -291,8 +243,6 @@ async def get_pet_stats(update: Update, context: CallbackContext):
 
     logging.info("Страница профиля успешно загружена")
 
-    await asyncio.sleep(2)
-    
     # Парсим страницу, чтобы извлечь информацию о питомце
     soup = BeautifulSoup(page, 'html.parser')
     stat_items = soup.find_all('div', class_='stat_item')
@@ -355,8 +305,7 @@ async def get_pet_stats(update: Update, context: CallbackContext):
     await update.message.reply_text(stats)
 
 # Функция для автоматических действий
-# Функция для автоматических действий
-async def auto_actions(session, session_name, user_id):
+async def auto_actions(session, session_name):
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -366,11 +315,6 @@ async def auto_actions(session, session_name, user_id):
     ]
 
     while True:
-        # Проверяем, активна ли сессия
-        if not user_sessions[user_id][session_name]["active"]:
-            logging.info(f"Сессия {session_name} деактивирована. Прекращаем выполнение действий.")
-            break  # Прекращаем выполнение, если сессия неактивна
-
         # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
         for action in actions[:4]:
             for _ in range(6):  # Повторить переход 6 раз
@@ -380,7 +324,7 @@ async def auto_actions(session, session_name, user_id):
         # Переход по последней ссылке 1 раз
         await visit_url(session, actions[4], session_name)
 
-        # Переход по дополнительным ссылкам
+                # Переход по дополнительным ссылкам
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url, session_name)
@@ -400,11 +344,7 @@ async def visit_url(session, url, session_name):
         logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
 
 # Основная функция для запуска бота
-# Основная функция для запуска бота
 async def main():
-    # Загрузить сессии из файла
-    load_sessions_from_file()
-
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
@@ -415,8 +355,7 @@ async def main():
     application.add_handler(CommandHandler("on", activate_session))
     application.add_handler(CommandHandler("off", deactivate_session))
     application.add_handler(CommandHandler("stats", get_pet_stats))
-    application.add_handler(CommandHandler("session", get_user))
-    application.add_handler(CommandHandler("user", user_sessions_command))  # Обработчик для команды /user
+    application.add_handler(CommandHandler("get_user", get_user))
 
     # Запуск бота
     await application.run_polling()
