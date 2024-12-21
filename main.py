@@ -226,28 +226,22 @@ async def deactivate_session(update: Update, context: CallbackContext):
 
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
-    # Проверка, что пользователь имеет разрешение
-    user_id = update.message.from_user.id
     if user_id not in ALLOWED_USER_IDS:
         await update.message.reply_text("У вас нет прав на использование этой команды.")
         return
-
+    # Проверка, если сессия существует и активна
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /get_user <имя_сессии>")
         return
 
     session_name = context.args[0]
+    user_id = update.message.from_user.id
 
-    session_info = read_from_file(session_name)
-    if session_info:
+    if user_id in user_sessions and session_name in user_sessions[user_id]:
+        session_info = user_sessions[user_id][session_name]
         owner = session_info["owner"]
-        cookies_text = json.dumps(session_info["cookies"], indent=4)  # Преобразуем куки в красивый формат
-
-        response = f"Сессия: {session_name}\n"
-        response += f"Владелец: {owner}\n"
-        response += f"Куки: {cookies_text}"
-
-        await send_message(update, response)
+        cookies = session_info["cookies"]
+        await update.message.reply_text(f"Сессия: {session_name}\nВладелец: {owner}\nКуки: {json.dumps(cookies)}")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
@@ -375,9 +369,10 @@ async def visit_url(session, url, session_name):
                 logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
     except Exception as e:
         logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
-
-# Основная функция для запуска бота
-async def main():
+        
+# Создание и запуск бота
+def start_bot():
+    # Создаем объект приложения
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
@@ -390,17 +385,11 @@ async def main():
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("get_user", get_user))
 
-    # Запуск бота
-    await application.run_polling()
+    # Запускаем бота
+    application.run_polling()
 
-# Запуск сессий при старте
-def start_bot():
-    # Запускаем асинхронную функцию загрузки сессий с использованием asyncio.run()
-    asyncio.run(load_sessions_from_file())
-    logging.info("Бот успешно запущен и сессии загружены.")
-
+# Запуск при старте
 if __name__ == "__main__":
+    asyncio.run(load_sessions_from_file())
     start_bot()
-    import nest_asyncio
-    nest_asyncio.apply()  # Это позволяет использовать event loop в Jupyter или других средах, где он уже запущен
-    asyncio.get_event_loop().run_until_complete(main())
+
