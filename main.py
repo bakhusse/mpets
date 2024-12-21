@@ -80,11 +80,21 @@ def load_sessions():
     global user_sessions
     sessions = read_from_file()
     for session in sessions:
+        # Преобразуем cookies в словарь
+        cookies = convert_cookies_to_dict(session["cookies"]) if isinstance(session["cookies"], list) else session["cookies"]
+        
         user_sessions.setdefault(session["user_id"], {})[session["session_name"]] = {
             "owner": session["owner"],
-            "cookies": session["cookies"],
+            "cookies": cookies,
             "active": False
         }
+
+
+def convert_cookies_to_dict(cookies_list):
+    # Преобразуем список объектов куки в словарь
+    cookies_dict = {cookie['name']: cookie['value'] for cookie in cookies_list}
+    return cookies_dict
+
 
 # Команда для добавления новой сессии
 async def add_session(update: Update, context: CallbackContext):
@@ -320,40 +330,48 @@ async def auto_actions(session, session_name):
         "https://mpets.mobi/glade_dig",
         "https://mpets.mobi/show_coin_get"
     ]
+    
+    # Преобразуем cookies, если они в списке
+    cookies = session.cookie_jar
+    if isinstance(cookies, list):
+        cookies = convert_cookies_to_dict(cookies)
 
     while True:
-        # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
         for action in actions[:4]:
             for _ in range(6):  # Повторить переход 6 раз
                 await visit_url(session, action, session_name)
                 await asyncio.sleep(1)
 
-        # Переход по последней ссылке 1 раз
         await visit_url(session, actions[4], session_name)
 
-        # Переход по дополнительным ссылкам
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url, session_name)
             await asyncio.sleep(1)
-        
-        # Пауза между циклами
+
         await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+
 
 
 async def visit_url(session, url, session_name):
     try:
-        # Запрашиваем URL
+        # Проверим, что cookies в правильном формате
+        cookies = session.cookie_jar
+        if isinstance(cookies, list):
+            cookies = convert_cookies_to_dict(cookies)
+        
+        # Логируем куки для диагностики
+        logging.debug(f"[{session_name}] Cookies: {cookies}")
+        
+        # Запрос с использованием правильных куки
         async with session.get(url) as response:
-            # Логируем статус ответа и содержимое
             if response.status == 200:
                 logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
-                page = await response.text()
-                logging.debug(f"[{session_name}] Ответ от {url}: {page[:500]}...")  # Логируем первые 500 символов страницы
             else:
                 logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
     except Exception as e:
         logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
+
 
 
 # Основная функция для запуска бота
