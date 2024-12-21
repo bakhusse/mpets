@@ -331,8 +331,11 @@ async def auto_actions(session_data, session_name):
         "https://mpets.mobi/show_coin_get"
     ]
 
-    # Преобразуем cookies из словаря в формат, поддерживаемый ClientSession
-    cookies = session_data.get("cookies", {})
+    # Преобразуем cookies из списка в словарь, если session_data является списком
+    if isinstance(session_data, list):
+        cookies = {cookie['name']: cookie['value'] for cookie in session_data}
+    else:
+        cookies = session_data.get("cookies", {})
 
     # Создаем сессию aiohttp с использованием cookies
     cookie_jar = CookieJar()
@@ -359,6 +362,7 @@ async def auto_actions(session_data, session_name):
 
             # Пауза между циклами
             await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+
             
 async def visit_url(session, url, session_name):
     try:
