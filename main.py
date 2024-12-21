@@ -78,11 +78,11 @@ def load_sessions_from_file():
     return sessions
     
 # Функция для записи данных в файл
-def write_to_file(session_name, owner, cookies):
+def write_to_file(session_name, owner, user_id, cookies):
     try:
         with open(USERS_FILE, "a") as file:
             cookies_json = json.dumps(cookies)
-            file.write(f"{session_name} | {owner} | {cookies_json}\n")
+            file.write(f"{session_name} | {owner} | {user_id} | {cookies_json}\n")
         logging.info(f"Сессия {session_name} добавлена в файл.")
     except Exception as e:
         logging.error(f"Ошибка при записи сессии в файл: {e}")
