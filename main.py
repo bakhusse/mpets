@@ -10,9 +10,6 @@ from bs4 import BeautifulSoup
 # Установите ваш токен бота
 TOKEN = "7689453735:AAHI8OfNGZzOM3fy9RQrXCjYRBHUKCXZAUY"
 
-# Глобальная переменная для хранения сессий пользователей
-user_sessions = {}
-
 # Путь к файлу сессий
 USERS_FILE = "users.txt"
 
@@ -67,61 +64,13 @@ def read_from_file(session_name):
             return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
 
     return None
-# Функция для загрузки сессий из файла
-def load_sessions_from_file():
-    """
-    Загрузить сессии из файла users.txt в память.
-    """
-    if not os.path.exists(USERS_FILE):
-        logging.warning(f"Файл {USERS_FILE} не найден!")
-        return  # Если файл не существует, выходим
-
-    with open(USERS_FILE, "r") as file:
-        lines = file.readlines()
-
-    for line in lines:
-        session_data = line.strip().split(" | ")
-        if len(session_data) != 3:
-            logging.warning(f"Некорректная строка в файле: {line.strip()}")
-            continue  # Пропускаем некорректные строки
-
-        session_name, owner, cookies_json = session_data
-        try:
-            cookies = json.loads(cookies_json)
-        except json.JSONDecodeError:
-            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}")
-            continue
-
-        # Добавляем сессию в память
-        if owner not in user_sessions:
-            user_sessions[owner] = {}
-
-        if session_name not in user_sessions[owner]:
-            jar = CookieJar()
-            for cookie in cookies:
-                jar.update_cookies({cookie['name']: cookie['value']})
-
-            session = ClientSession(cookie_jar=jar)
-            user_sessions[owner][session_name] = {
-                "session": session,
-                "active": False,
-                "owner": owner,
-                "cookies": cookies
-            }
-            logging.info(f"Сессия {session_name} загружена для {owner}")
-        else:
-            logging.info(f"Сессия {session_name} уже существует для {owner}")
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
-    """
-    Записывает данные о сессии в файл users.txt.
-    """
     with open(USERS_FILE, "a") as file:
         cookies_json = json.dumps(cookies)
         file.write(f"{session_name} | {owner} | {cookies_json}\n")
     logging.info(f"Сессия {session_name} добавлена в файл.")
-
 
 # Команда для добавления новой сессии
 async def add_session(update: Update, context: CallbackContext):
@@ -171,12 +120,6 @@ async def add_session(update: Update, context: CallbackContext):
     except Exception as e:
         await update.message.reply_text(f"Произошла ошибка: {e}")
 
-
-    except json.JSONDecodeError:
-        await update.message.reply_text("Невозможно распарсить куки. Убедитесь, что они в формате JSON.")
-    except Exception as e:
-        await update.message.reply_text(f"Произошла ошибка: {e}")
-
 # Команда для удаления сессии
 async def remove_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
@@ -215,11 +158,11 @@ async def activate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = True
         await update.message.reply_text(f"Сессия {session_name} активирована!")
-        logging.info(f"Сессия {session_name} активирована для пользователя {update.message.from_user.username}.")
+
+        # Автоматически начать действия после активации сессии
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-        logging.error(f"Сессия {session_name} не найдена для пользователя {update.message.from_user.username}.")
-
 
 # Команда для деактивации сессии
 async def deactivate_session(update: Update, context: CallbackContext):
@@ -262,6 +205,31 @@ async def get_user(update: Update, context: CallbackContext):
         await send_message(update, response)
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
+# Команда для получения статистики питомца
+async def get_pet_stats(update: Update, context: CallbackContext):
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /stats <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+    user_id = update.message.from_user.id
+
+    # Проверяем, что сессия существует для данного пользователя
+    if user_id not in user_sessions or session_name not in user_sessions[user_id]:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        return
+
+    # Получаем сессию из словаря
+    session = user_sessions[user_id][session_name]["session"]
+
+    # Получаем статистику питомца
+    stats = await get_pet_stats(session)
+
+    if stats:
+        await update.message.reply_text(stats)
+    else:
+        await update.message.reply_text(f"Не удалось получить статистику для сессии {session_name}.")
 
 # Функция для получения статистики питомца
 async def get_pet_stats(session: ClientSession):
@@ -364,9 +332,6 @@ async def visit_url(session, url, session_name):
 
 # Основная функция для запуска бота
 async def main():
-    # Загружаем сессии из файла
-    load_sessions_from_file()
-    
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
