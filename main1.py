@@ -164,7 +164,6 @@ async def activate_session(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Команда для деактивации сессии
 async def deactivate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
@@ -176,8 +175,10 @@ async def deactivate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = False
         await update.message.reply_text(f"Сессия {session_name} деактивирована.")
+        logging.info(f"Сессия {session_name} была деактивирована для пользователя {update.message.from_user.username}.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
 
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
@@ -305,7 +306,8 @@ async def get_pet_stats(update: Update, context: CallbackContext):
     await update.message.reply_text(stats)
 
 # Функция для автоматических действий
-async def auto_actions(session, session_name):
+# Функция для автоматических действий
+async def auto_actions(session, session_name, user_id):
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -315,6 +317,11 @@ async def auto_actions(session, session_name):
     ]
 
     while True:
+        # Проверяем, активна ли сессия
+        if not user_sessions[user_id][session_name]["active"]:
+            logging.info(f"Сессия {session_name} деактивирована. Прекращаем выполнение действий.")
+            break  # Прекращаем выполнение, если сессия неактивна
+
         # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
         for action in actions[:4]:
             for _ in range(6):  # Повторить переход 6 раз
@@ -324,7 +331,7 @@ async def auto_actions(session, session_name):
         # Переход по последней ссылке 1 раз
         await visit_url(session, actions[4], session_name)
 
-                # Переход по дополнительным ссылкам
+        # Переход по дополнительным ссылкам
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url, session_name)
