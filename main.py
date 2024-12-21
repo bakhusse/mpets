@@ -331,7 +331,7 @@ async def auto_actions(session, session_name):
         # Переход по последней ссылке 1 раз
         await visit_url(session, actions[4], session_name)
 
-                # Переход по дополнительным ссылкам
+        # Переход по дополнительным ссылкам
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url, session_name)
@@ -340,15 +340,21 @@ async def auto_actions(session, session_name):
         # Пауза между циклами
         await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
 
+
 async def visit_url(session, url, session_name):
     try:
+        # Запрашиваем URL
         async with session.get(url) as response:
+            # Логируем статус ответа и содержимое
             if response.status == 200:
                 logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
+                page = await response.text()
+                logging.debug(f"[{session_name}] Ответ от {url}: {page[:500]}...")  # Логируем первые 500 символов страницы
             else:
                 logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
     except Exception as e:
         logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
+
 
 # Основная функция для запуска бота
 async def main():
