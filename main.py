@@ -360,6 +360,9 @@ async def visit_url(session, url, session_name):
 
 # Основная функция для запуска бота
 async def main():
+    # Загрузить сессии из файла
+    load_sessions_from_file()
+
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
