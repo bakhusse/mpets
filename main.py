@@ -41,12 +41,12 @@ async def start(update: Update, context: CallbackContext):
 # Функция для чтения данных из файла
 def read_from_file():
     if not os.path.exists(USERS_FILE):
-        return {}
+        return []
 
-    sessions = {}
     with open(USERS_FILE, "r") as file:
         lines = file.readlines()
 
+    sessions = []
     for line in lines:
         session_data = line.strip().split(" | ")
 
@@ -55,31 +55,36 @@ def read_from_file():
             logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue
 
-        session_name, owner, user_id, cookies_json = session_data
         try:
-            cookies = json.loads(cookies_json)  # Пробуем распарсить куки
+            cookies = json.loads(session_data[3])  # Пробуем распарсить куки
         except json.JSONDecodeError:
-            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {cookies_json}")
-            continue  # Игнорируем неправильный формат куков
+            logging.error(f"Ошибка при парсинге JSON для сессии: {session_data[0]}")
+            continue  # Пропускаем некорректные строки
 
-        if user_id not in sessions:
-            sessions[user_id] = {}
-
-        sessions[user_id][session_name] = {
-            "session_name": session_name,
-            "owner": owner,
-            "cookies": cookies,
-            "active": False
-        }
+        sessions.append({
+            "session_name": session_data[0],
+            "owner": session_data[1],
+            "user_id": int(session_data[2]),
+            "cookies": cookies
+        })
 
     return sessions
-
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, user_id, cookies):
     with open(USERS_FILE, "a") as file:
         cookies_json = json.dumps(cookies)
         file.write(f"{session_name} | {owner} | {user_id} | {cookies_json}\n")
     logging.info(f"Сессия {session_name} добавлена в файл.")
+
+def load_sessions():
+    global user_sessions
+    sessions = read_from_file()
+    for session in sessions:
+        user_sessions.setdefault(session["user_id"], {})[session["session_name"]] = {
+            "owner": session["owner"],
+            "cookies": session["cookies"],
+            "active": False
+        }
 
 # Команда для добавления новой сессии
 async def add_session(update: Update, context: CallbackContext):
@@ -97,14 +102,6 @@ async def add_session(update: Update, context: CallbackContext):
             await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
             return
 
-        # Создаём объект CookieJar для хранения и отправки куков
-        jar = CookieJar()
-        for cookie in cookies:
-            jar.update_cookies({cookie['name']: cookie['value']})
-
-        session = ClientSession(cookie_jar=jar)
-        await session.__aenter__()
-
         # Сохраняем сессию и куки для пользователя
         if user_id not in user_sessions:
             user_sessions[user_id] = {}
@@ -113,14 +110,13 @@ async def add_session(update: Update, context: CallbackContext):
             await update.message.reply_text(f"Сессия с именем {session_name} уже существует.")
         else:
             user_sessions[user_id][session_name] = {
-                "session": session,
-                "active": False,
                 "owner": update.message.from_user.username,
-                "cookies": cookies
+                "cookies": cookies,
+                "active": False
             }
 
             # Записываем данные в файл
-            write_to_file(session_name, update.message.from_user.username, str(user_id), cookies)
+            write_to_file(session_name, update.message.from_user.username, user_id, cookies)
             await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
             logging.info(f"Сессия {session_name} добавлена для пользователя {update.message.from_user.username}.")
 
@@ -139,8 +135,7 @@ async def remove_session(update: Update, context: CallbackContext):
     session_name = context.args[0]
 
     if user_id in user_sessions and session_name in user_sessions[user_id]:
-        session = user_sessions[user_id].pop(session_name)
-        await session["session"].__aexit__(None, None, None)
+        user_sessions[user_id].pop(session_name)
         await update.message.reply_text(f"Сессия {session_name} удалена.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
@@ -169,7 +164,7 @@ async def activate_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия {session_name} активирована!")
 
         # Автоматически начать действия после активации сессии
-        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["cookies"], session_name))
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
@@ -203,16 +198,11 @@ async def get_user(update: Update, context: CallbackContext):
     session_name = context.args[0]
 
     session_info = read_from_file()
-    for user_sessions_data in session_info.values():
-        if session_name in user_sessions_data:
-            session_info = user_sessions_data[session_name]
-            owner = session_info["owner"]
-            cookies_text = json.dumps(session_info["cookies"], indent=4)  # Преобразуем куки в красивый формат
-
+    for session in session_info:
+        if session["session_name"] == session_name:
             response = f"Сессия: {session_name}\n"
-            response += f"Владелец: {owner}\n"
-            response += f"Куки: {cookies_text}"
-
+            response += f"Владелец: {session['owner']}\n"
+            response += f"Куки: {json.dumps(session['cookies'], indent=4)}"
             await send_message(update, response)
             return
 
@@ -345,10 +335,9 @@ async def visit_url(session, url, session_name):
 
 # Основная функция для запуска бота
 async def main():
-    global user_sessions
-    user_sessions = read_from_file()
-    
     application = Application.builder().token(TOKEN).build()
+
+    load_sessions()
 
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
