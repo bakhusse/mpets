@@ -208,12 +208,17 @@ async def get_user(update: Update, context: CallbackContext):
 
 # Функция для получения статистики питомца
 async def get_pet_stats(update: Update, context: CallbackContext):
+    # Логируем, когда команда была вызвана
+    logging.info("Команда /stats была вызвана")
+    
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /stats <имя_сессии>")
         return
 
     session_name = context.args[0]
     user_id = update.message.from_user.id
+
+    logging.info(f"Пользователь {update.message.from_user.username} запрашивает статистику для сессии {session_name}")
 
     # Проверяем, что сессия существует у пользователя
     if user_id not in user_sessions or session_name not in user_sessions[user_id]:
@@ -281,6 +286,7 @@ async def get_pet_stats(update: Update, context: CallbackContext):
 
     await update.message.reply_text(stats)
 
+
 # Функция для автоматических действий
 async def auto_actions(session, session_name):
     actions = [
@@ -331,7 +337,7 @@ async def main():
     application.add_handler(CommandHandler("list", list_sessions))
     application.add_handler(CommandHandler("on", activate_session))
     application.add_handler(CommandHandler("off", deactivate_session))
-    application.add_handler(CommandHandler("stats", get_pet_stats))  # Команда /stats теперь будет работать
+    application.add_handler(CommandHandler("stats", get_pet_stats))  # Команда /stats
     application.add_handler(CommandHandler("get_user", get_user))
 
     # Запуск бота
