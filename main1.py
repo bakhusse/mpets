@@ -158,14 +158,13 @@ async def activate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = True
         await update.message.reply_text(f"Сессия {session_name} активирована!")
-        logging.info(f"Сессия {session_name} активирована для пользователя {update.message.from_user.username}.")
 
-        # Передаем user_id в auto_actions
-        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name, user_id))
+        # Автоматически начать действия после активации сессии
+        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-
+# Команда для деактивации сессии
 async def deactivate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
@@ -177,10 +176,8 @@ async def deactivate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = False
         await update.message.reply_text(f"Сессия {session_name} деактивирована.")
-        logging.info(f"Сессия {session_name} была деактивирована для пользователя {update.message.from_user.username}.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-
 
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
@@ -209,10 +206,8 @@ async def get_user(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Функция для получения статистики питомца
-async def get_pet_stats(update: Update, context: CallbackContext):
-    logging.info("Команда /stats была вызвана")
-
+# Команда для получения статистики питомца
+async def stats(update: Update, context: CallbackContext):
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /stats <имя_сессии>")
         return
@@ -220,53 +215,45 @@ async def get_pet_stats(update: Update, context: CallbackContext):
     session_name = context.args[0]
     user_id = update.message.from_user.id
 
-    logging.info(f"Пользователь {update.message.from_user.username} запрашивает статистику для сессии {session_name}")
-
-    # Проверяем, что сессия существует у пользователя
+    # Проверяем, что сессия существует для данного пользователя
     if user_id not in user_sessions or session_name not in user_sessions[user_id]:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
         return
 
-    # Получаем сессию (неважно, активна ли она)
+    # Получаем сессию из словаря
     session = user_sessions[user_id][session_name]["session"]
 
+    # Получаем статистику питомца
+    stats = await fetch_pet_stats(session)
+
+    if stats:
+        await update.message.reply_text(stats)
+    else:
+        await update.message.reply_text(f"Не удалось получить статистику для сессии {session_name}.")
+
+
+# Переименованная функция для получения статистики питомца
+async def fetch_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
-    try:
-        async with session.get(url) as response:
-            if response.status != 200:
-                logging.error(f"Ошибка при загрузке страницы профиля: {response.status}")
-                await update.message.reply_text(f"Ошибка при загрузке страницы профиля: {response.status}")
-                return
-            page = await response.text()
+    async with session.get(url) as response:
+        if response.status != 200:
+            return f"Ошибка при загрузке страницы профиля: {response.status}"
 
-    except Exception as e:
-        logging.error(f"Ошибка при запросе к {url}: {e}")
-        await update.message.reply_text(f"Ошибка при запросе к {url}: {e}")
-        return
-
-    logging.info("Страница профиля успешно загружена")
+        page = await response.text()
+    soup = BeautifulSoup(page, 'html.parser')
 
     # Парсим страницу, чтобы извлечь информацию о питомце
-    soup = BeautifulSoup(page, 'html.parser')
     stat_items = soup.find_all('div', class_='stat_item')
-
+    
     if not stat_items:
-        logging.warning("Не удалось найти элементы статистики на странице.")
-        await update.message.reply_text("Не удалось найти элементы статистики.")
-        return
+        return "Не удалось найти элементы статистики."
 
-    # Логируем парсинг элементов статистики
     pet_name = stat_items[0].find('a', class_='darkgreen_link')
     if not pet_name:
-        logging.warning("Не удалось найти имя питомца.")
-        await update.message.reply_text("Не удалось найти имя питомца.")
-        return
+        return "Не удалось найти имя питомца."
     pet_name = pet_name.text.strip()
 
     pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
-
-    # Логируем найденные данные
-    logging.info(f"Имя питомца: {pet_name}, Уровень: {pet_level}")
 
     experience = "Не найдено"
     for item in stat_items:
@@ -303,13 +290,10 @@ async def get_pet_stats(update: Update, context: CallbackContext):
     stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
     stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
 
-    # Логируем финальную строку статистики перед отправкой
-    logging.info(f"Отправка статистики: {stats}")
-    await update.message.reply_text(stats)
+    return stats
 
 # Функция для автоматических действий
-# Функция для автоматических действий
-async def auto_actions(session, session_name, user_id):
+async def auto_actions(session, session_name):
     actions = [
         "https://mpets.mobi/?action=food",
         "https://mpets.mobi/?action=play",
@@ -319,11 +303,6 @@ async def auto_actions(session, session_name, user_id):
     ]
 
     while True:
-        # Проверяем, активна ли сессия
-        if not user_sessions[user_id][session_name]["active"]:
-            logging.info(f"Сессия {session_name} деактивирована. Прекращаем выполнение действий.")
-            break  # Прекращаем выполнение, если сессия неактивна
-
         # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
         for action in actions[:4]:
             for _ in range(6):  # Повторить переход 6 раз
@@ -333,7 +312,7 @@ async def auto_actions(session, session_name, user_id):
         # Переход по последней ссылке 1 раз
         await visit_url(session, actions[4], session_name)
 
-        # Переход по дополнительным ссылкам
+                # Переход по дополнительным ссылкам
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url, session_name)
@@ -363,7 +342,7 @@ async def main():
     application.add_handler(CommandHandler("list", list_sessions))
     application.add_handler(CommandHandler("on", activate_session))
     application.add_handler(CommandHandler("off", deactivate_session))
-    application.add_handler(CommandHandler("stats", get_pet_stats))  # Команда /stats
+    application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("get_user", get_user))
 
     # Запуск бота
