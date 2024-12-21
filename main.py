@@ -38,32 +38,47 @@ async def start(update: Update, context: CallbackContext):
                                     "/get_user <имя_сессии> - узнать владельца сессии и куки\n"
                                     "Отправьте куки в формате JSON для авторизации.")
 
-# Функция для чтения данных из файла
-def read_from_file(session_name):
+# Функция для загрузки сессий из файла при старте
+def load_sessions_from_file():
     if not os.path.exists(USERS_FILE):
-        return None
+        logging.warning("Файл с пользователями не найден. Создайте файл сессий.")
+        return
 
     with open(USERS_FILE, "r") as file:
         lines = file.readlines()
 
     for line in lines:
         session_data = line.strip().split(" | ")
-
-        # Проверка на наличие всех данных
+        
+        # Проверка на корректность данных
         if len(session_data) != 3:
             logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue
 
-        if session_data[0] == session_name:
-            owner = session_data[1]
-            try:
-                cookies = json.loads(session_data[2])  # Пробуем распарсить куки
-            except json.JSONDecodeError:
-                logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
-                return None  # Возвращаем None, если JSON не валиден
-            return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
+        session_name = session_data[0]
+        owner = session_data[1]
+        try:
+            cookies = json.loads(session_data[2])  # Пробуем распарсить куки
+        except json.JSONDecodeError:
+            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
+            continue  # Пропускаем некорректные данные
 
-    return None
+        # Если пользователь еще не существует в user_sessions, создаём новый словарь для сессий
+        for user_id in ALLOWED_USER_IDS:
+            if user_id not in user_sessions:
+                user_sessions[user_id] = {}
+
+        # Сохраняем сессию в user_sessions
+        user_sessions[user_id][session_name] = {
+            "session": ClientSession(cookie_jar=CookieJar()),
+            "active": False,
+            "owner": owner,
+            "cookies": cookies
+        }
+        
+        # Сессия должна быть активирована или завершена (в зависимости от требований)
+        logging.info(f"Сессия {session_name} для {owner} успешно загружена из файла.")
+
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
