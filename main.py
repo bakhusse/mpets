@@ -183,30 +183,7 @@ async def deactivate_session(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Команда для получения информации о владельце сессии
-async def get_user(update: Update, context: CallbackContext):
-    # Проверка, что пользователь имеет разрешение
-    user_id = update.message.from_user.id
-    if user_id not in ALLOWED_USER_IDS:
-        await update.message.reply_text("У вас нет прав на использование этой команды.")
-        return
-
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /get_user <имя_сессии>")
-        return
-
-    session_name = context.args[0]
-
-    if session_name in user_sessions:
-        session_info = user_sessions[session_name]
-        owner = session_info['owner']
-        cookies_text = json.dumps(session_info['cookies'], indent=4)  # Преобразуем куки в красивый формат
-        response = f"Сессия: {session_name}\nВладелец: {owner}\nКуки:\n{cookies_text}"
-        await update.message.reply_text(response)
-    else:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-
-# Переименованная функция для получения статистики питомца
+# Функция для получения статистики питомца
 async def fetch_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
     async with session.get(url) as response:
@@ -216,7 +193,6 @@ async def fetch_pet_stats(session: ClientSession):
         page = await response.text()
     soup = BeautifulSoup(page, 'html.parser')
 
-    # Парсим страницу, чтобы извлечь информацию о питомце
     stat_items = soup.find_all('div', class_='stat_item')
     
     if not stat_items:
@@ -227,7 +203,7 @@ async def fetch_pet_stats(session: ClientSession):
         return "Не удалось найти имя питомца."
     pet_name = pet_name.text.strip()
 
-    pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
+    pet_level = stat_items[0].text.split(' ')[-2]
 
     experience = "Не найдено"
     for item in stat_items:
@@ -266,49 +242,45 @@ async def fetch_pet_stats(session: ClientSession):
 
     return stats
 
-# Функция для автоматических действий
-async def auto_actions(session, session_name):
-    actions = [
-        "https://mpets.mobi/?action=food",
-        "https://mpets.mobi/?action=play",
-        "https://mpets.mobi/show",
-        "https://mpets.mobi/glade_dig",
-        "https://mpets.mobi/show_coin_get"
-    ]
+# Команда для получения статистики питомца
+async def stats(update: Update, context: CallbackContext):
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /stats <имя_сессии>")
+        return
 
-    while True:
-        # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
-        for action in actions[:4]:
-            for _ in range(6):  # Повторить переход 6 раз
-                await visit_url(session, action, session_name)
-                await asyncio.sleep(1)
+    session_name = context.args[0]
 
-        # Переход по последней ссылке 1 раз
-        await visit_url(session, actions[4], session_name)
+    if update.message.from_user.id not in user_sessions or session_name not in user_sessions[update.message.from_user.id]:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        return
 
-        # Переход по дополнительным ссылкам
-        for i in range(10, 0, -1):
-            url = f"https://mpets.mobi/go_travel?id={i}"
-            await visit_url(session, url, session_name)
-            await asyncio.sleep(1)
+    session = user_sessions[update.message.from_user.id][session_name]["session"]
+    stats = await fetch_pet_stats(session)
+    await update.message.reply_text(stats)
 
-        # Пауза между циклами
-        await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+# Команда для получения владельца сессии и куков
+async def get_user(update: Update, context: CallbackContext):
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /get_user <имя_сессии>")
+        return
 
-async def visit_url(session, url, session_name):
-    try:
-        async with session.get(url) as response:
-            if response.status == 200:
-                logging.info(f"[{session_name}] Переход по {url} прошел успешно!")
-            else:
-                logging.error(f"[{session_name}] Ошибка при переходе по {url}: {response.status}")
-    except Exception as e:
-        logging.error(f"[{session_name}] Ошибка при запросе к {url}: {e}")
+    session_name = context.args[0]
 
-# Загрузка сессий перед запуском бота
-user_sessions = read_from_file()
+    if update.message.from_user.id not in user_sessions or session_name not in user_sessions[update.message.from_user.id]:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        return
 
-# Основная функция для запуска бота
+    session_data = user_sessions[update.message.from_user.id][session_name]
+    owner = session_data["owner"]
+    cookies = json.dumps(session_data["cookies"], indent=2)
+
+    response = f"Сессия: {session_name}\n"
+    response += f"Владелец: {owner}\n"
+    response += f"Куки:\n{cookies}"
+
+    await update.message.reply_text(response)
+
+# Запуск бота
 async def main():
     application = Application.builder().token(TOKEN).build()
 
