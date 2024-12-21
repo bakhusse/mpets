@@ -66,7 +66,7 @@ def read_from_file(session_name):
     return None
 
 # Чтение сессий из файла
-def load_sessions_from_file():
+async def load_sessions_from_file():
     if not os.path.exists(USERS_FILE):
         logging.info("Файл с сессиями не найден. Начинаем с пустого набора сессий.")
         return
@@ -97,7 +97,8 @@ def load_sessions_from_file():
         for cookie in cookies:
             jar.update_cookies({cookie['name']: cookie['value']})
 
-        session = ClientSession(cookie_jar=jar)
+        session = await ClientSession(cookie_jar=jar).__aenter__()
+
         # Добавляем сессию в глобальную переменную
         user_sessions[owner] = user_sessions.get(owner, {})
         user_sessions[owner][session_name] = {
@@ -394,10 +395,8 @@ async def main():
 
 # Запуск сессий при старте
 def start_bot():
-    # Загружаем сессии из файла
-    load_sessions_from_file()
-
-    # Основной код запуска бота
+    # Запускаем асинхронную функцию загрузки сессий с использованием asyncio.run()
+    asyncio.run(load_sessions_from_file())
     logging.info("Бот успешно запущен и сессии загружены.")
 
 if __name__ == "__main__":
