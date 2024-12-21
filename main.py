@@ -222,16 +222,22 @@ async def stats(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
         return
 
-    # Получаем сессию из словаря
-    session = user_sessions[user_id][session_name]["session"]
+    # Получаем куки из сессии
+    cookies = user_sessions[user_id][session_name]["cookies"]
 
-    # Получаем статистику питомца
-    stats = await fetch_pet_stats(session)
+    # Создаем новую сессию для статистики
+    async with ClientSession(cookie_jar=CookieJar()) as session:
+        # Используем куки для авторизации
+        session.cookie_jar.update_cookies(cookies)
+        
+        # Получаем статистику питомца
+        stats = await fetch_pet_stats(session)
 
-    if stats:
-        await update.message.reply_text(stats)
-    else:
-        await update.message.reply_text(f"Не удалось получить статистику для сессии {session_name}.")
+        if stats:
+            await update.message.reply_text(stats)
+        else:
+            await update.message.reply_text(f"Не удалось получить статистику для сессии {session_name}.")
+
 
 
 # Переименованная функция для получения статистики питомца
