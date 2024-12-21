@@ -208,9 +208,8 @@ async def get_user(update: Update, context: CallbackContext):
 
 # Функция для получения статистики питомца
 async def get_pet_stats(update: Update, context: CallbackContext):
-    # Логируем, когда команда была вызвана
     logging.info("Команда /stats была вызвана")
-    
+
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /stats <имя_сессии>")
         return
@@ -225,29 +224,46 @@ async def get_pet_stats(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
         return
 
-    # Получаем сессию
+    # Получаем сессию (неважно, активна ли она)
     session = user_sessions[user_id][session_name]["session"]
 
     url = "https://mpets.mobi/profile"
-    async with session.get(url) as response:
-        if response.status != 200:
-            return f"Ошибка при загрузке страницы профиля: {response.status}"
+    try:
+        async with session.get(url) as response:
+            if response.status != 200:
+                logging.error(f"Ошибка при загрузке страницы профиля: {response.status}")
+                await update.message.reply_text(f"Ошибка при загрузке страницы профиля: {response.status}")
+                return
+            page = await response.text()
 
-        page = await response.text()
-    soup = BeautifulSoup(page, 'html.parser')
+    except Exception as e:
+        logging.error(f"Ошибка при запросе к {url}: {e}")
+        await update.message.reply_text(f"Ошибка при запросе к {url}: {e}")
+        return
+
+    logging.info("Страница профиля успешно загружена")
 
     # Парсим страницу, чтобы извлечь информацию о питомце
+    soup = BeautifulSoup(page, 'html.parser')
     stat_items = soup.find_all('div', class_='stat_item')
-    
-    if not stat_items:
-        return "Не удалось найти элементы статистики."
 
+    if not stat_items:
+        logging.warning("Не удалось найти элементы статистики на странице.")
+        await update.message.reply_text("Не удалось найти элементы статистики.")
+        return
+
+    # Логируем парсинг элементов статистики
     pet_name = stat_items[0].find('a', class_='darkgreen_link')
     if not pet_name:
-        return "Не удалось найти имя питомца."
+        logging.warning("Не удалось найти имя питомца.")
+        await update.message.reply_text("Не удалось найти имя питомца.")
+        return
     pet_name = pet_name.text.strip()
 
     pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
+
+    # Логируем найденные данные
+    logging.info(f"Имя питомца: {pet_name}, Уровень: {pet_level}")
 
     experience = "Не найдено"
     for item in stat_items:
@@ -284,8 +300,9 @@ async def get_pet_stats(update: Update, context: CallbackContext):
     stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
     stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
 
+    # Логируем финальную строку статистики перед отправкой
+    logging.info(f"Отправка статистики: {stats}")
     await update.message.reply_text(stats)
-
 
 # Функция для автоматических действий
 async def auto_actions(session, session_name):
