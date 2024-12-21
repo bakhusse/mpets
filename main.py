@@ -296,4 +296,4 @@ async def main():
 
 # Запуск бота без asyncio.run()
 if __name__ == "__main__":
-    asyncio.ensure_future(main())
+    asyncio.run(main())
