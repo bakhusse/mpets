@@ -41,42 +41,51 @@ async def start(update: Update, context: CallbackContext):
 # Функция для чтения данных из файла
 def load_sessions_from_file():
     if not os.path.exists(USERS_FILE):
+        logging.info(f"Файл {USERS_FILE} не найден. Создаём новый.")
         return {}
 
-    with open(USERS_FILE, "r") as file:
-        lines = file.readlines()
-
     sessions = {}
-    for line in lines:
-        session_data = line.strip().split(" | ")
+    try:
+        with open(USERS_FILE, "r") as file:
+            lines = file.readlines()
 
-        # Проверка на наличие всех данных
-        if len(session_data) != 3:
-            logging.warning(f"Некорректная строка в файле: {line.strip()}")
-            continue
+        for line in lines:
+            session_data = line.strip().split(" | ")
 
-        session_name = session_data[0]
-        owner = session_data[1]
-        try:
-            cookies = json.loads(session_data[2])  # Пробуем распарсить куки
-        except json.JSONDecodeError:
-            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
-            continue  # Пропускаем, если JSON не валиден
+            # Проверка на наличие всех данных
+            if len(session_data) != 3:
+                logging.warning(f"Некорректная строка в файле: {line.strip()}")
+                continue
 
-        # Добавляем сессию в память
-        sessions[session_name] = {
-            "owner": owner,
-            "cookies": cookies
-        }
+            session_name = session_data[0]
+            owner = session_data[1]
+            try:
+                cookies = json.loads(session_data[2])  # Пробуем распарсить куки
+            except json.JSONDecodeError:
+                logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
+                continue  # Пропускаем, если JSON не валиден
+
+            # Добавляем сессию в память
+            sessions[session_name] = {
+                "owner": owner,
+                "cookies": cookies
+            }
+
+        logging.info(f"Загружено {len(sessions)} сессий из файла.")
+    except Exception as e:
+        logging.error(f"Ошибка при загрузке сессий из файла: {e}")
 
     return sessions
-
+    
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
-    with open(USERS_FILE, "a") as file:
-        cookies_json = json.dumps(cookies)
-        file.write(f"{session_name} | {owner} | {cookies_json}\n")
-    logging.info(f"Сессия {session_name} добавлена в файл.")
+    try:
+        with open(USERS_FILE, "a") as file:
+            cookies_json = json.dumps(cookies)
+            file.write(f"{session_name} | {owner} | {cookies_json}\n")
+        logging.info(f"Сессия {session_name} добавлена в файл.")
+    except Exception as e:
+        logging.error(f"Ошибка при записи сессии в файл: {e}")
 
 # Команда для добавления новой сессии
 async def add_session(update: Update, context: CallbackContext):
@@ -184,7 +193,7 @@ async def deactivate_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия {session_name} деактивирована.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-
+        
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
     # Проверка, что пользователь имеет разрешение
