@@ -73,6 +73,7 @@ def load_sessions_from_file():
     Загрузить сессии из файла users.txt в память.
     """
     if not os.path.exists(USERS_FILE):
+        logging.warning(f"Файл {USERS_FILE} не найден!")
         return  # Если файл не существует, выходим
 
     with open(USERS_FILE, "r") as file:
@@ -81,6 +82,7 @@ def load_sessions_from_file():
     for line in lines:
         session_data = line.strip().split(" | ")
         if len(session_data) != 3:
+            logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue  # Пропускаем некорректные строки
 
         session_name, owner, cookies_json = session_data
@@ -107,6 +109,8 @@ def load_sessions_from_file():
                 "cookies": cookies
             }
             logging.info(f"Сессия {session_name} загружена для {owner}")
+        else:
+            logging.info(f"Сессия {session_name} уже существует для {owner}")
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
@@ -211,11 +215,11 @@ async def activate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = True
         await update.message.reply_text(f"Сессия {session_name} активирована!")
-
-        # Автоматически начать действия после активации сессии
-        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["session"], session_name))
+        logging.info(f"Сессия {session_name} активирована для пользователя {update.message.from_user.username}.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        logging.error(f"Сессия {session_name} не найдена для пользователя {update.message.from_user.username}.")
+
 
 # Команда для деактивации сессии
 async def deactivate_session(update: Update, context: CallbackContext):
