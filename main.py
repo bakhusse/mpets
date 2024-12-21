@@ -393,4 +393,4 @@ async def main():
 
 # Проверка наличия активного цикла событий
 if __name__ == "__main__":
-    main()
+     asyncio.run(main())
