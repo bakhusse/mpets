@@ -126,7 +126,7 @@ async def add_session(update: Update, context: CallbackContext):
             }
 
             # Записываем данные в файл
-            write_to_file(session_name, update.message.from_user.username, cookies)
+            write_to_file(session_name, update.message.from_user.username, user_id, cookies)
             await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
             logging.info(f"Сессия {session_name} добавлена для пользователя {update.message.from_user.username}.")
 
