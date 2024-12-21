@@ -39,14 +39,14 @@ async def start(update: Update, context: CallbackContext):
                                     "Отправьте куки в формате JSON для авторизации.")
 
 # Функция для чтения данных из файла
-def load_sessions_from_file():
+def read_from_file():
     if not os.path.exists(USERS_FILE):
         return {}
 
+    sessions = {}
     with open(USERS_FILE, "r") as file:
         lines = file.readlines()
 
-    sessions = {}
     for line in lines:
         session_data = line.strip().split(" | ")
 
@@ -55,36 +55,31 @@ def load_sessions_from_file():
             logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue
 
-        session_name = session_data[0]
-        owner = session_data[1]
-        user_id = int(session_data[2])  # Преобразуем user_id в целое число
+        session_name, owner, user_id, cookies_json = session_data
         try:
-            cookies = json.loads(session_data[3])  # Пробуем распарсить куки
+            cookies = json.loads(cookies_json)  # Пробуем распарсить куки
         except json.JSONDecodeError:
-            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[3]}")
-            continue  # Пропускаем, если JSON не валиден
+            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {cookies_json}")
+            continue  # Игнорируем неправильный формат куков
 
-        # Добавляем сессию в память
         if user_id not in sessions:
             sessions[user_id] = {}
 
         sessions[user_id][session_name] = {
+            "session_name": session_name,
             "owner": owner,
-            "cookies": cookies
+            "cookies": cookies,
+            "active": False
         }
 
     return sessions
 
-    
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, user_id, cookies):
-    try:
-        with open(USERS_FILE, "a") as file:
-            cookies_json = json.dumps(cookies)
-            file.write(f"{session_name} | {owner} | {user_id} | {cookies_json}\n")
-        logging.info(f"Сессия {session_name} добавлена в файл.")
-    except Exception as e:
-        logging.error(f"Ошибка при записи сессии в файл: {e}")
+    with open(USERS_FILE, "a") as file:
+        cookies_json = json.dumps(cookies)
+        file.write(f"{session_name} | {owner} | {user_id} | {cookies_json}\n")
+    logging.info(f"Сессия {session_name} добавлена в файл.")
 
 # Команда для добавления новой сессии
 async def add_session(update: Update, context: CallbackContext):
@@ -96,7 +91,7 @@ async def add_session(update: Update, context: CallbackContext):
 
         session_name = context.args[0]
         cookies_json = " ".join(context.args[1:])
-
+        
         cookies = json.loads(cookies_json)
         if not cookies:
             await update.message.reply_text("Пожалуйста, отправьте куки в правильном формате JSON.")
@@ -125,7 +120,7 @@ async def add_session(update: Update, context: CallbackContext):
             }
 
             # Записываем данные в файл
-            write_to_file(session_name, update.message.from_user.username, user_id, cookies)
+            write_to_file(session_name, update.message.from_user.username, str(user_id), cookies)
             await update.message.reply_text(f"Сессия {session_name} успешно добавлена!")
             logging.info(f"Сессия {session_name} добавлена для пользователя {update.message.from_user.username}.")
 
@@ -192,7 +187,7 @@ async def deactivate_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия {session_name} деактивирована.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-        
+
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
     # Проверка, что пользователь имеет разрешение
@@ -207,18 +202,21 @@ async def get_user(update: Update, context: CallbackContext):
 
     session_name = context.args[0]
 
-    session_info = read_from_file(session_name)
-    if session_info:
-        owner = session_info["owner"]
-        cookies_text = json.dumps(session_info["cookies"], indent=4)  # Преобразуем куки в красивый формат
+    session_info = read_from_file()
+    for user_sessions_data in session_info.values():
+        if session_name in user_sessions_data:
+            session_info = user_sessions_data[session_name]
+            owner = session_info["owner"]
+            cookies_text = json.dumps(session_info["cookies"], indent=4)  # Преобразуем куки в красивый формат
 
-        response = f"Сессия: {session_name}\n"
-        response += f"Владелец: {owner}\n"
-        response += f"Куки: {cookies_text}"
+            response = f"Сессия: {session_name}\n"
+            response += f"Владелец: {owner}\n"
+            response += f"Куки: {cookies_text}"
 
-        await send_message(update, response)
-    else:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+            await send_message(update, response)
+            return
+
+    await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Команда для получения статистики питомца
 async def stats(update: Update, context: CallbackContext):
@@ -348,7 +346,7 @@ async def visit_url(session, url, session_name):
 # Основная функция для запуска бота
 async def main():
     global user_sessions
-    user_sessions = load_sessions_from_file()
+    user_sessions = read_from_file()
     
     application = Application.builder().token(TOKEN).build()
 
