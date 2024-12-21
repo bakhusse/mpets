@@ -207,7 +207,22 @@ async def get_user(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Функция для получения статистики питомца
-async def get_pet_stats(session: ClientSession):
+async def get_pet_stats(update: Update, context: CallbackContext):
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /stats <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+    user_id = update.message.from_user.id
+
+    # Проверяем, что сессия существует у пользователя
+    if user_id not in user_sessions or session_name not in user_sessions[user_id]:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        return
+
+    # Получаем сессию
+    session = user_sessions[user_id][session_name]["session"]
+
     url = "https://mpets.mobi/profile"
     async with session.get(url) as response:
         if response.status != 200:
@@ -264,7 +279,7 @@ async def get_pet_stats(session: ClientSession):
     stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
     stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
 
-    return stats
+    await update.message.reply_text(stats)
 
 # Функция для автоматических действий
 async def auto_actions(session, session_name):
@@ -316,7 +331,7 @@ async def main():
     application.add_handler(CommandHandler("list", list_sessions))
     application.add_handler(CommandHandler("on", activate_session))
     application.add_handler(CommandHandler("off", deactivate_session))
-    application.add_handler(CommandHandler("stats", get_pet_stats))
+    application.add_handler(CommandHandler("stats", get_pet_stats))  # Команда /stats теперь будет работать
     application.add_handler(CommandHandler("get_user", get_user))
 
     # Запуск бота
