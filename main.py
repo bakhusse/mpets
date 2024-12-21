@@ -311,7 +311,7 @@ async def auto_actions(session, session_name):
         # Переход по последней ссылке 1 раз
         await visit_url(session, actions[4], session_name)
 
-                # Переход по дополнительным ссылкам
+        # Переход по дополнительным ссылкам
         for i in range(10, 0, -1):
             url = f"https://mpets.mobi/go_travel?id={i}"
             await visit_url(session, url, session_name)
