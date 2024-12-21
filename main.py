@@ -8,7 +8,7 @@ from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
 # Установите ваш токен бота
-TOKEN = "7689453735:AAHI8OfNGZzOM3fy9RQrXCjYRBHUKCXZAUY"
+TOKEN = "7690678050:AAGBwTdSUNgE7Q6Z2LpE6481vvJJhetrO-4"
 
 # Путь к файлу сессий
 USERS_FILE = "users.txt"
@@ -38,47 +38,32 @@ async def start(update: Update, context: CallbackContext):
                                     "/get_user <имя_сессии> - узнать владельца сессии и куки\n"
                                     "Отправьте куки в формате JSON для авторизации.")
 
-# Функция для загрузки сессий из файла при старте
-def load_sessions_from_file():
+# Функция для чтения данных из файла
+def read_from_file(session_name):
     if not os.path.exists(USERS_FILE):
-        logging.warning("Файл с пользователями не найден. Создайте файл сессий.")
-        return
+        return None
 
     with open(USERS_FILE, "r") as file:
         lines = file.readlines()
 
     for line in lines:
         session_data = line.strip().split(" | ")
-        
-        # Проверка на корректность данных
+
+        # Проверка на наличие всех данных
         if len(session_data) != 3:
             logging.warning(f"Некорректная строка в файле: {line.strip()}")
             continue
 
-        session_name = session_data[0]
-        owner = session_data[1]
-        try:
-            cookies = json.loads(session_data[2])  # Пробуем распарсить куки
-        except json.JSONDecodeError:
-            logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
-            continue  # Пропускаем некорректные данные
+        if session_data[0] == session_name:
+            owner = session_data[1]
+            try:
+                cookies = json.loads(session_data[2])  # Пробуем распарсить куки
+            except json.JSONDecodeError:
+                logging.error(f"Ошибка при парсинге JSON для сессии {session_name}: {session_data[2]}")
+                return None  # Возвращаем None, если JSON не валиден
+            return {"session_name": session_data[0], "owner": owner, "cookies": cookies}
 
-        # Если пользователь еще не существует в user_sessions, создаём новый словарь для сессий
-        for user_id in ALLOWED_USER_IDS:
-            if user_id not in user_sessions:
-                user_sessions[user_id] = {}
-
-        # Сохраняем сессию в user_sessions
-        user_sessions[user_id][session_name] = {
-            "session": ClientSession(cookie_jar=CookieJar()),
-            "active": False,
-            "owner": owner,
-            "cookies": cookies
-        }
-        
-        # Сессия должна быть активирована или завершена (в зависимости от требований)
-        logging.info(f"Сессия {session_name} для {owner} успешно загружена из файла.")
-
+    return None
 
 # Функция для записи данных в файл
 def write_to_file(session_name, owner, cookies):
@@ -222,63 +207,27 @@ async def get_user(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Функция для получения статистики питомца
-async def get_pet_stats(update: Update, context: CallbackContext):
-    logging.info("Команда /stats была вызвана")
-
-    if len(context.args) < 1:
-        await update.message.reply_text("Использование: /stats <имя_сессии>")
-        return
-
-    session_name = context.args[0]
-    user_id = update.message.from_user.id
-
-    logging.info(f"Пользователь {update.message.from_user.username} запрашивает статистику для сессии {session_name}")
-
-    # Проверяем, что сессия существует у пользователя
-    if user_id not in user_sessions or session_name not in user_sessions[user_id]:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
-        return
-
-    # Получаем сессию (неважно, активна ли она)
-    session = user_sessions[user_id][session_name]["session"]
-
+async def get_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
-    try:
-        async with session.get(url) as response:
-            if response.status != 200:
-                logging.error(f"Ошибка при загрузке страницы профиля: {response.status}")
-                await update.message.reply_text(f"Ошибка при загрузке страницы профиля: {response.status}")
-                return
-            page = await response.text()
+    async with session.get(url) as response:
+        if response.status != 200:
+            return f"Ошибка при загрузке страницы профиля: {response.status}"
 
-    except Exception as e:
-        logging.error(f"Ошибка при запросе к {url}: {e}")
-        await update.message.reply_text(f"Ошибка при запросе к {url}: {e}")
-        return
-
-    logging.info("Страница профиля успешно загружена")
+        page = await response.text()
+    soup = BeautifulSoup(page, 'html.parser')
 
     # Парсим страницу, чтобы извлечь информацию о питомце
-    soup = BeautifulSoup(page, 'html.parser')
     stat_items = soup.find_all('div', class_='stat_item')
-
+    
     if not stat_items:
-        logging.warning("Не удалось найти элементы статистики на странице.")
-        await update.message.reply_text("Не удалось найти элементы статистики.")
-        return
+        return "Не удалось найти элементы статистики."
 
-    # Логируем парсинг элементов статистики
     pet_name = stat_items[0].find('a', class_='darkgreen_link')
     if not pet_name:
-        logging.warning("Не удалось найти имя питомца.")
-        await update.message.reply_text("Не удалось найти имя питомца.")
-        return
+        return "Не удалось найти имя питомца."
     pet_name = pet_name.text.strip()
 
     pet_level = stat_items[0].text.split(' ')[-2]  # Уровень питомца
-
-    # Логируем найденные данные
-    logging.info(f"Имя питомца: {pet_name}, Уровень: {pet_level}")
 
     experience = "Не найдено"
     for item in stat_items:
@@ -315,9 +264,7 @@ async def get_pet_stats(update: Update, context: CallbackContext):
     stats += f"Монеты: {coins}\nСердечки: {hearts}\n"
     stats += f"VIP-аккаунт/Премиум-аккаунт: {vip_status}"
 
-    # Логируем финальную строку статистики перед отправкой
-    logging.info(f"Отправка статистики: {stats}")
-    await update.message.reply_text(stats)
+    return stats
 
 # Функция для автоматических действий
 async def auto_actions(session, session_name):
@@ -360,9 +307,6 @@ async def visit_url(session, url, session_name):
 
 # Основная функция для запуска бота
 async def main():
-    # Загрузить сессии из файла
-    load_sessions_from_file()
-
     application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
