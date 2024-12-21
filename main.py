@@ -207,7 +207,7 @@ async def get_user(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Команда для получения статистики питомца
-async def get_pet_stats(update: Update, context: CallbackContext):
+async def stats(update: Update, context: CallbackContext):
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /stats <имя_сессии>")
         return
@@ -224,15 +224,16 @@ async def get_pet_stats(update: Update, context: CallbackContext):
     session = user_sessions[user_id][session_name]["session"]
 
     # Получаем статистику питомца
-    stats = await get_pet_stats(session)
+    stats = await fetch_pet_stats(session)
 
     if stats:
         await update.message.reply_text(stats)
     else:
         await update.message.reply_text(f"Не удалось получить статистику для сессии {session_name}.")
 
-# Функция для получения статистики питомца
-async def get_pet_stats(session: ClientSession):
+
+# Переименованная функция для получения статистики питомца
+async def fetch_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
     async with session.get(url) as response:
         if response.status != 200:
@@ -341,7 +342,7 @@ async def main():
     application.add_handler(CommandHandler("list", list_sessions))
     application.add_handler(CommandHandler("on", activate_session))
     application.add_handler(CommandHandler("off", deactivate_session))
-    application.add_handler(CommandHandler("stats", get_pet_stats))
+    application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("get_user", get_user))
 
     # Запуск бота
