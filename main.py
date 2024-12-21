@@ -21,6 +21,7 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 
 # Глобальная переменная для хранения сессий пользователей
 user_sessions = {}
+user_tasks = {}
 
 # Функция для отправки сообщений
 async def send_message(update: Update, text: str):
@@ -174,7 +175,11 @@ async def activate_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия {session_name} активирована!")
 
         # Автоматически начать действия после активации сессии
-        asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["cookies"], session_name))
+        task = asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["cookies"], session_name))
+        
+        # Сохраняем задачу для дальнейшего отмены
+        user_tasks[(user_id, session_name)] = task
+
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
@@ -190,8 +195,18 @@ async def deactivate_session(update: Update, context: CallbackContext):
     if user_id in user_sessions and session_name in user_sessions[user_id]:
         user_sessions[user_id][session_name]["active"] = False
         await update.message.reply_text(f"Сессия {session_name} деактивирована.")
+
+        # Если задача существует, отменяем ее
+        task = user_tasks.get((user_id, session_name))
+        if task:
+            task.cancel()
+            del user_tasks[(user_id, session_name)]
+            logging.info(f"Задача для сессии {session_name} отменена.")
+        else:
+            logging.warning(f"Задача для сессии {session_name} не найдена для отмены.")
     else:
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
 
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
@@ -345,6 +360,11 @@ async def auto_actions(session_data, session_name):
     # Создаем новый ClientSession с куки
     async with ClientSession(cookie_jar=cookie_jar) as session:
         while True:
+            # Проверяем, не отменена ли задача
+            if asyncio.current_task().cancelled():
+                logging.info(f"Задача для сессии {session_name} отменена.")
+                return  # Выход из цикла, если задача была отменена
+
             # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
             for action in actions[:4]:
                 for _ in range(6):  # Повторить переход 6 раз
@@ -362,7 +382,6 @@ async def auto_actions(session_data, session_name):
 
             # Пауза между циклами
             await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
-
             
 async def visit_url(session, url, session_name):
     try:
