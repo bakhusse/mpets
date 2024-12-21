@@ -231,7 +231,6 @@ async def stats(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"Не удалось получить статистику для сессии {session_name}.")
 
-
 # Переименованная функция для получения статистики питомца
 async def fetch_pet_stats(session: ClientSession):
     url = "https://mpets.mobi/profile"
