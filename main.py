@@ -261,6 +261,8 @@ async def get_pet_stats(update: Update, context: CallbackContext):
 
     logging.info("Страница профиля успешно загружена")
 
+    await asyncio.sleep(2)
+    
     # Парсим страницу, чтобы извлечь информацию о питомце
     soup = BeautifulSoup(page, 'html.parser')
     stat_items = soup.find_all('div', class_='stat_item')
