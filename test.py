@@ -25,7 +25,7 @@ user_tasks = {}
 
 # Функция для отправки сообщений
 async def send_message(update: Update, text: str):
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
@@ -255,7 +255,7 @@ async def get_user(update: Update, context: CallbackContext):
             cookies = json.dumps(session['cookies'], indent=4)  # Форматируем куки с отступами для читаемости
             hidden_cookies = f"```json\n{cookies}```"  # Скрываем куки в блоке, доступном для раскрытия
 
-            response += f"Куки: {hidden_cookies}"
+            response += f"Куки:\n> {hidden_cookies}"
             
             await send_message(update, response)
             return
