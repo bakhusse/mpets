@@ -137,7 +137,7 @@ async def add_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Произошла ошибка: {e}")
 
 # Команда для удаления сессии
-async def remove_session(update: Update, context: CallbackContext):
+async def remove_session(update: Update, context: CallbackContext, session_name: str):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /del <имя_сессии>")
@@ -223,7 +223,7 @@ async def handle_action(update: Update, context: CallbackContext):
         await remove_session(update, context, session_name)
 
 # Команда для активации сессии
-async def activate_session(update: Update, context: CallbackContext):
+async def activate_session(update: Update, context: CallbackContext, session_name: str):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /on <имя_сессии>")
@@ -245,7 +245,7 @@ async def activate_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Команда для деактивации сессии
-async def deactivate_session(update: Update, context: CallbackContext):
+async def deactivate_session(update: Update, context: CallbackContext, session_name: str):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /off <имя_сессии>")
@@ -302,7 +302,7 @@ async def get_user(update: Update, context: CallbackContext):
 
 
 # Команда для получения статистики питомца
-async def stats(update: Update, context: CallbackContext):
+async def stats(update: Update, context: CallbackContext, session_name: str):
     # Проверяем, что команда передана с аргументами
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /stats <имя_сессии>")
