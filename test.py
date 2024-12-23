@@ -2,8 +2,8 @@ import asyncio
 import logging
 import json
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
+from telegram import Update
+from telegram.ext import Application, CommandHandler, CallbackContext
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
@@ -137,7 +137,7 @@ async def add_session(update: Update, context: CallbackContext):
         await update.message.reply_text(f"Произошла ошибка: {e}")
 
 # Команда для удаления сессии
-async def remove_session(update: Update, context: CallbackContext, session_name: str):
+async def remove_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /del <имя_сессии>")
@@ -177,53 +177,14 @@ async def remove_session(update: Update, context: CallbackContext, session_name:
 async def list_sessions(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if user_id in user_sessions and user_sessions[user_id]:
-        keyboard = []
-        for session_name, session in user_sessions[user_id].items():
-            keyboard.append([
-                InlineKeyboardButton(f"{session_name} - {'Активна' if session['active'] else 'Неактивна'}", callback_data=f"action_{session_name}")
-            ])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Выберите сессию:", reply_markup=reply_markup)
+        session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
+                                 for name, session in user_sessions[user_id].items()])
+        await update.message.reply_text(f"Ваши активные сессии:\n{session_list}")
     else:
         await update.message.reply_text("У вас нет активных сессий.")
 
-# Обработчик кнопок
-async def button_handler(update: Update, context: CallbackContext):
-    query = update.callback_query
-    session_name = query.data.split("_")[1]  # Получаем имя сессии
-    user_id = query.from_user.id
-
-    # Генерируем кнопки для действий (включение/выключение/статистика/удаление)
-    keyboard = [
-        [InlineKeyboardButton("Включить", callback_data=f"on_{session_name}")],
-        [InlineKeyboardButton("Выключить", callback_data=f"off_{session_name}")],
-        [InlineKeyboardButton("Статистика", callback_data=f"stats_{session_name}")],
-        [InlineKeyboardButton("Удалить", callback_data=f"del_{session_name}")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # Отправляем сообщение с кнопками для действий
-    await query.edit_message_text(f"Вы выбрали сессию: {session_name}", reply_markup=reply_markup)
-
-# Обработчик для команд, вызываемых кнопками
-async def handle_action(update: Update, context: CallbackContext):
-    query = update.callback_query
-    action, session_name = query.data.split("_")
-
-    user_id = query.from_user.id
-
-    if action == "on":
-        await activate_session(update, context, session_name)
-    elif action == "off":
-        await deactivate_session(update, context, session_name)
-    elif action == "stats":
-        await stats(update, context, session_name)
-    elif action == "del":
-        await remove_session(update, context, session_name)
-
 # Команда для активации сессии
-async def activate_session(update: Update, context: CallbackContext, session_name: str):
+async def activate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /on <имя_сессии>")
@@ -245,7 +206,7 @@ async def activate_session(update: Update, context: CallbackContext, session_nam
         await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
 # Команда для деактивации сессии
-async def deactivate_session(update: Update, context: CallbackContext, session_name: str):
+async def deactivate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /off <имя_сессии>")
@@ -302,7 +263,7 @@ async def get_user(update: Update, context: CallbackContext):
 
 
 # Команда для получения статистики питомца
-async def stats(update: Update, context: CallbackContext, session_name: str):
+async def stats(update: Update, context: CallbackContext):
     # Проверяем, что команда передана с аргументами
     if len(context.args) < 1:
         await update.message.reply_text("Использование: /stats <имя_сессии>")
@@ -477,10 +438,6 @@ async def main():
     application.add_handler(CommandHandler("off", deactivate_session))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("get_user", get_user))
-
-     # Обработчик кнопок
-    application.add_handler(CallbackQueryHandler(button_handler, pattern="^action_"))
-    application.add_handler(CallbackQueryHandler(handle_action, pattern="^(on|off|stats|del)_"))
 
     # Запуск бота
     await application.run_polling()
