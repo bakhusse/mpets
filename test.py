@@ -206,6 +206,22 @@ async def button_handler(update: Update, context: CallbackContext):
     # Отправляем сообщение с кнопками для действий
     await query.edit_message_text(f"Вы выбрали сессию: {session_name}", reply_markup=reply_markup)
 
+# Обработчик для команд, вызываемых кнопками
+async def handle_action(update: Update, context: CallbackContext):
+    query = update.callback_query
+    action, session_name = query.data.split("_")
+
+    user_id = query.from_user.id
+
+    if action == "on":
+        await activate_session(update, context, session_name)
+    elif action == "off":
+        await deactivate_session(update, context, session_name)
+    elif action == "stats":
+        await stats(update, context, session_name)
+    elif action == "del":
+        await remove_session(update, context, session_name)
+
 # Команда для активации сессии
 async def activate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
