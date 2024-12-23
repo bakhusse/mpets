@@ -23,13 +23,9 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 user_sessions = {}
 user_tasks = {}
 
-def escape_markdown(text: str) -> str:
-    # Экранируем все специальные символы MarkdownV2
-    return re.sub(r'([\\`*_{}\[\]()#+\-.!])', r'\\\1', text)
-
-# Функция для отправки сообщений
+# Функциядля отправки сообщений
 async def send_message(update: Update, text: str):
-    await update.message.reply_text(text, parse_mode="MarkdownV2")
+    await update.message.reply_text(text)
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
@@ -254,14 +250,11 @@ async def get_user(update: Update, context: CallbackContext):
             response = f"Сессия: {session_name}\n"
             response += f"Владелец: {session['owner']}\n"
 
-            # Форматируем куки как JSON с отступами
-            cookies = json.dumps(session['cookies'], indent=4)
+            # Форматируем куки как скрытый блок
+            cookies = json.dumps(session['cookies'], indent=4)  # Форматируем куки с отступами для читаемости
+            hidden_cookies = f"```json\n{cookies}```"  # Скрываем куки в блоке, доступном для раскрытия
 
-            # Преобразуем куки в скрытую цитату
-            hidden_cookies = "\n".join([f"> {line}" for line in cookies.splitlines()])
-
-            # Добавляем цитату с куками
-            response += f"Куки:\n{hidden_cookies}"
+            response += f"Куки:\n{hidden_cookies}"  # Добавляем цитату с куками
 
             await send_message(update, response)
             return
