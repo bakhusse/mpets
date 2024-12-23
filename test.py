@@ -252,10 +252,11 @@ async def get_user(update: Update, context: CallbackContext):
 
             # Форматируем куки как JSON с отступами
             cookies = json.dumps(session['cookies'], indent=4)
-            hidden_cookies = f"```json\n{cookies}```"  # Форматируем как код JSON
+            # Преобразуем куки в скрытую цитату
+            hidden_cookies = "\n".join([f"> {line}" for line in cookies.splitlines()])
 
             # Добавляем цитату с куками
-            response += f"> {hidden_cookies.replace('\n', '\\n> ')}"  # Заменяем \n на \n> для цитаты
+            response += f"Куки:\n{hidden_cookies}"
 
             await send_message(update, response)
             return
