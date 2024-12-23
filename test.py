@@ -254,7 +254,7 @@ async def get_user(update: Update, context: CallbackContext):
             cookies = json.dumps(session['cookies'], indent=4)  # Форматируем куки с отступами для читаемости
             hidden_cookies = f"```json\n{cookies}```"  # Скрываем куки в блоке, доступном для раскрытия
 
-            response += f"Куки:\n{hidden_cookies}"  # Добавляем цитату с куками
+            response += f"Куки:\n {hidden_cookies}"  # Добавляем цитату с куками
 
             await send_message(update, response)
             return
