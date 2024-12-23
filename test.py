@@ -23,6 +23,10 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 user_sessions = {}
 user_tasks = {}
 
+def escape_markdown(text: str) -> str:
+    # Экранируем все специальные символы MarkdownV2
+    return re.sub(r'([\\`*_{}\[\]()#+\-.!])', r'\\\1', text)
+
 # Функция для отправки сообщений
 async def send_message(update: Update, text: str):
     await update.message.reply_text(text, parse_mode="MarkdownV2")
@@ -252,6 +256,7 @@ async def get_user(update: Update, context: CallbackContext):
 
             # Форматируем куки как JSON с отступами
             cookies = json.dumps(session['cookies'], indent=4)
+
             # Преобразуем куки в скрытую цитату
             hidden_cookies = "\n".join([f"> {line}" for line in cookies.splitlines()])
 
