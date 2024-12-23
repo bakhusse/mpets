@@ -180,7 +180,7 @@ async def list_sessions(update: Update, context: CallbackContext):
         keyboard = []
         for session_name, session in user_sessions[user_id].items():
             keyboard.append([
-                InlineKeyboardButton(f"{session_name} - {'Активна' if session['active'] else 'Неактивна'}", callback_data=f"session_{session_name}")
+                InlineKeyboardButton(f"{session_name} - {'Активна' if session['active'] else 'Неактивна'}", callback_data=f"action_{session_name}")
             ])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
