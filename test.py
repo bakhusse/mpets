@@ -25,7 +25,7 @@ user_tasks = {}
 
 # Функциядля отправки сообщений
 async def send_message(update: Update, text: str):
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 # Команда старт для начала работы с ботом
 async def start(update: Update, context: CallbackContext):
