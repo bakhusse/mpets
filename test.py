@@ -231,7 +231,6 @@ async def deactivate_session(update: Update, context: CallbackContext):
 
 
 # Команда для получения информации о владельце сессии
-# Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
     # Проверка, что пользователь имеет разрешение
     user_id = update.message.from_user.id
@@ -249,11 +248,11 @@ async def get_user(update: Update, context: CallbackContext):
     for session in session_info:
         if session["session_name"] == session_name:
             response = f"Сессия: {session_name}\n"
-            response += f"Владелец: {session['owner']}\n"
+            response += f"Владелец: @{session['owner']}\n"
 
             # Форматируем куки как скрытый блок
             cookies = json.dumps(session['cookies'], indent=4)  # Форматируем куки с отступами для читаемости
-            hidden_cookies = f"```json\n{cookies}```"  # Скрываем куки в блоке, доступном для раскрытия
+            hidden_cookies = f"{cookies}"  # Скрываем куки в блоке, доступном для раскрытия
 
             response += f"Куки:\n> {hidden_cookies}"
             
