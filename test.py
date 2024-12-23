@@ -106,7 +106,7 @@ async def info(update: Update, context: CallbackContext):
         "Связь с разработчиком: [t.me/bakhusse](https://t.me/bakhusse)\n"
         "Телеграм канал: [t.me/cobalt_mpets](https://t.me/cobalt_mpets)"
     )
-    await update.message.reply_text(message)
+    await update.message.reply_text(message, parse_mode='Markdown')
 
 # Команда /guide - инструкция по получению куки
 async def guide(update: Update, context: CallbackContext):
