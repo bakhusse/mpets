@@ -191,18 +191,19 @@ async def list_sessions(update: Update, context: CallbackContext):
 # Обработчик кнопок
 async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
-    session_name = query.data.split("_")[1]
+    session_name = query.data.split("_")[1]  # Получаем имя сессии
     user_id = query.from_user.id
 
-    # Генерируем кнопки для действий
+    # Генерируем кнопки для действий (включение/выключение/статистика/удаление)
     keyboard = [
-        [InlineKeyboardButton("Включить", callback_data=f"activate_{session_name}")],
-        [InlineKeyboardButton("Выключить", callback_data=f"deactivate_{session_name}")],
+        [InlineKeyboardButton("Включить", callback_data=f"on_{session_name}")],
+        [InlineKeyboardButton("Выключить", callback_data=f"off_{session_name}")],
         [InlineKeyboardButton("Статистика", callback_data=f"stats_{session_name}")],
-        [InlineKeyboardButton("Удалить", callback_data=f"remove_{session_name}")]
+        [InlineKeyboardButton("Удалить", callback_data=f"del_{session_name}")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    # Отправляем сообщение с кнопками для действий
     await query.edit_message_text(f"Вы выбрали сессию: {session_name}", reply_markup=reply_markup)
 
 # Команда для активации сессии
@@ -462,7 +463,8 @@ async def main():
     application.add_handler(CommandHandler("get_user", get_user))
 
      # Обработчик кнопок
-    application.add_handler(CallbackQueryHandler(button_handler, pattern="^session_"))
+    application.add_handler(CallbackQueryHandler(button_handler, pattern="^action_"))
+    application.add_handler(CallbackQueryHandler(handle_action, pattern="^(on|off|stats|del)_"))
 
     # Запуск бота
     await application.run_polling()
