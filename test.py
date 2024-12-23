@@ -2,8 +2,8 @@ import asyncio
 import logging
 import json
 import os
-from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
 from aiohttp import ClientSession, CookieJar
 from bs4 import BeautifulSoup
 
@@ -177,11 +177,33 @@ async def remove_session(update: Update, context: CallbackContext):
 async def list_sessions(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if user_id in user_sessions and user_sessions[user_id]:
-        session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
-                                 for name, session in user_sessions[user_id].items()])
-        await update.message.reply_text(f"Ваши активные сессии:\n{session_list}")
+        keyboard = []
+        for session_name, session in user_sessions[user_id].items():
+            keyboard.append([
+                InlineKeyboardButton(f"{session_name} - {'Активна' if session['active'] else 'Неактивна'}", callback_data=f"session_{session_name}")
+            ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Выберите сессию:", reply_markup=reply_markup)
     else:
         await update.message.reply_text("У вас нет активных сессий.")
+
+# Обработчик кнопок
+async def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    session_name = query.data.split("_")[1]
+    user_id = query.from_user.id
+
+    # Генерируем кнопки для действий
+    keyboard = [
+        [InlineKeyboardButton("Включить", callback_data=f"activate_{session_name}")],
+        [InlineKeyboardButton("Выключить", callback_data=f"deactivate_{session_name}")],
+        [InlineKeyboardButton("Статистика", callback_data=f"stats_{session_name}")],
+        [InlineKeyboardButton("Удалить", callback_data=f"remove_{session_name}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(f"Вы выбрали сессию: {session_name}", reply_markup=reply_markup)
 
 # Команда для активации сессии
 async def activate_session(update: Update, context: CallbackContext):
@@ -438,6 +460,9 @@ async def main():
     application.add_handler(CommandHandler("off", deactivate_session))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("get_user", get_user))
+
+     # Обработчик кнопок
+    application.add_handler(CallbackQueryHandler(button_handler, pattern="^session_"))
 
     # Запуск бота
     await application.run_polling()
