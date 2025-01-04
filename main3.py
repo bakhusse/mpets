@@ -214,11 +214,15 @@ async def activate_session(update: Update, context: CallbackContext):
     # Если пользователь вводит "all", активируем все сессии
     if session_name == "all":
         if user_id in user_sessions and user_sessions[user_id]:
+            # Для каждой сессии активируем и запускаем задачу перехода
             for name, session in user_sessions[user_id].items():
                 if not session["active"]:
                     session["active"] = True
                     logging.info(f"Сессия {name} активирована для пользователя {user_id}.")
-            await update.message.reply_text("Все сессии активированы!")
+                    # Запускаем задачу для перехода по ссылкам
+                    task = asyncio.create_task(auto_actions(session["cookies"], name))
+                    user_tasks[(user_id, name)] = task  # Сохраняем задачу для возможной отмены
+            await update.message.reply_text("Все сессии активированы и начали работу!")
         else:
             await update.message.reply_text("У вас нет активных сессий.")
     else:
@@ -234,6 +238,7 @@ async def activate_session(update: Update, context: CallbackContext):
             user_tasks[(user_id, session_name)] = task
         else:
             await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+
 
 # Команда для деактивации сессии или всех сессий пользователя
 async def deactivate_session(update: Update, context: CallbackContext):
