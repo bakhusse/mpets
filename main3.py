@@ -371,6 +371,7 @@ async def get_user(update: Update, context: CallbackContext):
         if session["session_name"] == session_name:
             response = f"Сессия: {session_name}\n"
             response += f"Владелец: {session['owner']}\n"
+            response += f"ID: {session["user_id"]}\n"
 
             # Форматируем куки как скрытый блок
             cookies = json.dumps(session['cookies'], indent=4)  # Форматируем куки с отступами для читаемости
