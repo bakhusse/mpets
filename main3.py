@@ -396,37 +396,34 @@ async def get_user_sessions(update: Update, context: CallbackContext):
 
     target = context.args[0]
 
+    # Чтение сессий из файла с помощью вашей функции
+    sessions = read_from_file()
+
     # Проверяем, является ли введенный параметр числом (user_id)
     if target.isdigit():
         target_user_id = int(target)
-        # Проверяем, существует ли сессия для этого user_id
-        if target_user_id in user_sessions and user_sessions[target_user_id]:
-            session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
-                                     for name, session in user_sessions[target_user_id].items()])
+        # Ищем сессии по user_id
+        user_sessions = [f"{session_name} ({owner}) - {'Активна' if active else 'Неактивна'}"
+                         for session_name, owner, user_id, active in sessions
+                         if user_id == target_user_id]
+        
+        if user_sessions:
+            session_list = "\n".join(user_sessions)
             await update.message.reply_text(f"Сессии пользователя с ID {target_user_id}:\n{session_list}")
         else:
             await update.message.reply_text(f"У пользователя с ID {target_user_id} нет активных сессий.")
     
     # Если это строка (имя пользователя), ищем по имени
     else:
-        target_user_id = None
-        for uid, sessions in user_sessions.items():
-            # Проверяем, если имя пользователя совпадает с ключом в сессиях
-            for session_name in sessions:
-                if session_name == target:
-                    target_user_id = uid
-                    break
-            if target_user_id:
-                break
-
-        if target_user_id is None:
+        user_sessions = [f"{session_name} ({owner}) - {'Активна' if active else 'Неактивна'}"
+                         for session_name, owner, user_id, active in sessions
+                         if owner == target]
+        
+        if user_sessions:
+            session_list = "\n".join(user_sessions)
+            await update.message.reply_text(f"Сессии пользователя {target}:\n{session_list}")
+        else:
             await update.message.reply_text(f"Пользователь с именем {target} не найден.")
-            return
-
-        # Получаем список сессий для этого пользователя
-        session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
-                                 for name, session in user_sessions[target_user_id].items()])
-        await update.message.reply_text(f"Сессии пользователя {target} (ID: {target_user_id}):\n{session_list}")
 
 # Команда для получения статистики питомца
 async def stats(update: Update, context: CallbackContext):
