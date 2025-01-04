@@ -202,52 +202,150 @@ async def list_sessions(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text("У вас нет активных сессий.")
 
-# Команда для активации сессии
+# Команда для активации сессии или всех сессий пользователя
 async def activate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
-        await update.message.reply_text("Использование: /on <имя_сессии>")
+        await update.message.reply_text("Использование: /on <имя_сессии> или /on all")
         return
 
     session_name = context.args[0]
 
-    if user_id in user_sessions and session_name in user_sessions[user_id]:
-        user_sessions[user_id][session_name]["active"] = True
-        await update.message.reply_text(f"Сессия {session_name} активирована!")
-
-        # Автоматически начать действия после активации сессии
-        task = asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["cookies"], session_name))
-        
-        # Сохраняем задачу для дальнейшего отмены
-        user_tasks[(user_id, session_name)] = task
-
+    # Если пользователь вводит "all", активируем все сессии
+    if session_name == "all":
+        if user_id in user_sessions and user_sessions[user_id]:
+            for name, session in user_sessions[user_id].items():
+                if not session["active"]:
+                    session["active"] = True
+                    logging.info(f"Сессия {name} активирована для пользователя {user_id}.")
+            await update.message.reply_text("Все сессии активированы!")
+        else:
+            await update.message.reply_text("У вас нет активных сессий.")
     else:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        # Иначе активируем конкретную сессию
+        if user_id in user_sessions and session_name in user_sessions[user_id]:
+            user_sessions[user_id][session_name]["active"] = True
+            await update.message.reply_text(f"Сессия {session_name} активирована!")
+            
+            # Автоматически начать действия после активации сессии
+            task = asyncio.create_task(auto_actions(user_sessions[user_id][session_name]["cookies"], session_name))
+            
+            # Сохраняем задачу для дальнейшего отмены
+            user_tasks[(user_id, session_name)] = task
+        else:
+            await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
-# Команда для деактивации сессии
+# Команда для деактивации сессии или всех сессий пользователя
 async def deactivate_session(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     if len(context.args) < 1:
-        await update.message.reply_text("Использование: /off <имя_сессии>")
+        await update.message.reply_text("Использование: /off <имя_сессии> или /off all")
         return
 
     session_name = context.args[0]
 
-    if user_id in user_sessions and session_name in user_sessions[user_id]:
-        user_sessions[user_id][session_name]["active"] = False
-        await update.message.reply_text(f"Сессия {session_name} деактивирована.")
-
-        # Если задача существует, отменяем ее
-        task = user_tasks.get((user_id, session_name))
-        if task:
-            task.cancel()
-            del user_tasks[(user_id, session_name)]
-            logging.info(f"Задача для сессии {session_name} отменена.")
+    # Если пользователь вводит "all", деактивируем все сессии
+    if session_name == "all":
+        if user_id in user_sessions and user_sessions[user_id]:
+            for name, session in user_sessions[user_id].items():
+                if session["active"]:
+                    session["active"] = False
+                    task = user_tasks.get((user_id, name))
+                    if task:
+                        task.cancel()
+                        del user_tasks[(user_id, name)]
+                    logging.info(f"Сессия {name} деактивирована для пользователя {user_id}.")
+            await update.message.reply_text("Все сессии деактивированы!")
         else:
-            logging.warning(f"Задача для сессии {session_name} не найдена для отмены.")
+            await update.message.reply_text("У вас нет активных сессий.")
     else:
-        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        # Иначе деактивируем конкретную сессию
+        if user_id in user_sessions and session_name in user_sessions[user_id]:
+            user_sessions[user_id][session_name]["active"] = False
+            await update.message.reply_text(f"Сессия {session_name} деактивирована.")
+            
+            # Если задача существует, отменяем её
+            task = user_tasks.get((user_id, session_name))
+            if task:
+                task.cancel()
+                del user_tasks[(user_id, session_name)]
+                logging.info(f"Задача для сессии {session_name} отменена.")
+            else:
+                logging.warning(f"Задача для сессии {session_name} не найдена для отмены.")
+        else:
+            await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
+
+# Команда для активации сессии другого пользователя по имени сессии
+async def activate_other_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        await update.message.reply_text("У вас нет прав для использования этой команды.")
+        return
+
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /aon <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    # Ищем сессию по имени среди всех пользователей
+    target_user_id = None
+    for uid, sessions in user_sessions.items():
+        if session_name in sessions:
+            target_user_id = uid
+            break
+
+    if target_user_id is None:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        return
+
+    # Активируем сессию для найденного пользователя
+    user_sessions[target_user_id][session_name]["active"] = True
+    await update.message.reply_text(f"Сессия {session_name} для пользователя {target_user_id} активирована!")
+
+    # Автоматически начать действия после активации сессии
+    task = asyncio.create_task(auto_actions(user_sessions[target_user_id][session_name]["cookies"], session_name))
+
+    # Сохраняем задачу для дальнейшего отмены
+    user_tasks[(target_user_id, session_name)] = task
+
+# Команда для деактивации сессии другого пользователя по имени сессии
+async def deactivate_other_session(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        await update.message.reply_text("У вас нет прав для использования этой команды.")
+        return
+
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /aoff <имя_сессии>")
+        return
+
+    session_name = context.args[0]
+
+    # Ищем сессию по имени среди всех пользователей
+    target_user_id = None
+    for uid, sessions in user_sessions.items():
+        if session_name in sessions:
+            target_user_id = uid
+            break
+
+    if target_user_id is None:
+        await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
+        return
+
+    # Деактивируем сессию для найденного пользователя
+    user_sessions[target_user_id][session_name]["active"] = False
+    await update.message.reply_text(f"Сессия {session_name} для пользователя {target_user_id} деактивирована.")
+
+    # Если задача существует, отменяем её
+    task = user_tasks.get((target_user_id, session_name))
+    if task:
+        task.cancel()
+        del user_tasks[(target_user_id, session_name)]
+        logging.info(f"Задача для сессии {session_name} пользователя {target_user_id} отменена.")
+    else:
+        logging.warning(f"Задача для сессии {session_name} пользователя {target_user_id} не найдена для отмены.")
 
 # Команда для получения информации о владельце сессии
 async def get_user(update: Update, context: CallbackContext):
@@ -280,6 +378,47 @@ async def get_user(update: Update, context: CallbackContext):
 
     await update.message.reply_text(f"Сессия с именем {session_name} не найдена.")
 
+# Команда для получения списка сессий другого пользователя
+async def get_user_sessions(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
+    if user_id not in ALLOWED_USER_IDS:
+        await update.message.reply_text("У вас нет прав для использования этой команды.")
+        return
+
+    if len(context.args) < 1:
+        await update.message.reply_text("Использование: /get_list <user_id> или /get_list <имя_пользователя>")
+        return
+
+    target = context.args[0]
+
+    # Если введен ID пользователя
+    if target.isdigit():
+        target_user_id = int(target)
+        # Проверяем, существует ли сессия для этого пользователя
+        if target_user_id in user_sessions and user_sessions[target_user_id]:
+            session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
+                                     for name, session in user_sessions[target_user_id].items()])
+            await update.message.reply_text(f"Сессии пользователя {target_user_id}:\n{session_list}")
+        else:
+            await update.message.reply_text(f"У пользователя {target_user_id} нет активных сессий.")
+    
+    # Если введено имя пользователя
+    else:
+        # Ищем пользователя по имени
+        target_user_id = None
+        for uid, sessions in user_sessions.items():
+            if target in sessions:
+                target_user_id = uid
+                break
+
+        if target_user_id is None:
+            await update.message.reply_text(f"Пользователь с именем {target} не найден.")
+            return
+
+        # Получаем список сессий этого пользователя
+        session_list = "\n".join([f"{name} - {'Активна' if session['active'] else 'Неактивна'}"
+                                 for name, session in user_sessions[target_user_id].items()])
+        await update.message.reply_text(f"Сессии пользователя {target} (ID: {target_user_id}):\n{session_list}")
 
 # Команда для получения статистики питомца
 async def stats(update: Update, context: CallbackContext):
@@ -386,12 +525,16 @@ async def fetch_pet_stats(session: ClientSession):
 
 # Функция для автоматических действий
 async def auto_actions(session_data, session_name):
+    # Все ссылки для переходов
     actions = [
-        "https://mpets.mobi/?action=food",
-        "https://mpets.mobi/?action=play",
-        "https://mpets.mobi/show",
-        "https://mpets.mobi/glade_dig",
-        "https://mpets.mobi/show_coin_get"
+        "https://mpets.mobi/?action=food",        # 1-я ссылка
+        "https://mpets.mobi/?action=play",        # 2-я ссылка
+        "https://mpets.mobi/show",                # 3-я ссылка
+        "https://mpets.mobi/glade_dig",           # 4-я ссылка
+        "https://mpets.mobi/show_coin_get",       # 5-я ссылка (переход по 1 разу)
+        "https://mpets.mobi/task_reward?id=46",    # 6-я ссылка (переход по 1 разу)
+        "https://mpets.mobi/task_reward?id=49",    # 7-я ссылка (переход по 1 разу)
+        "https://mpets.mobi/task_reward?id=52"     # 8-я ссылка (переход по 1 разу)
     ]
 
     # Преобразуем cookies из списка в словарь, если session_data является списком
@@ -413,16 +556,18 @@ async def auto_actions(session_data, session_name):
                 logging.info(f"Задача для сессии {session_name} отменена.")
                 return  # Выход из цикла, если задача была отменена
 
-            # Переходы по первыми четырём ссылкам 6 раз с задержкой в 1 секунду
+            # Переходы по первым четырём ссылкам 6 раз с задержкой в 1 секунду
             for action in actions[:4]:
                 for _ in range(6):  # Повторить переход 6 раз
                     await visit_url(session, action, session_name)
                     await asyncio.sleep(1)
 
-            # Переход по последней ссылке 1 раз
-            await visit_url(session, actions[4], session_name)
+            # Переходы по оставшимся 4 ссылкам 1 раз
+            for action in actions[4:]:
+                await visit_url(session, action, session_name)
+                await asyncio.sleep(1)
 
-            # Переход по дополнительным ссылкам
+            # Переход по другим ссылкам с параметром id от 10 до 1
             for i in range(10, 0, -1):
                 url = f"https://mpets.mobi/go_travel?id={i}"
                 await visit_url(session, url, session_name)
@@ -430,6 +575,8 @@ async def auto_actions(session_data, session_name):
 
             # Пауза между циклами
             await asyncio.sleep(60)  # Задержка 60 секунд перед новым циклом
+
+
             
 async def visit_url(session, url, session_name):
     try:
@@ -457,6 +604,9 @@ async def main():
     application.add_handler(CommandHandler("off", deactivate_session))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("get_user", get_user))
+    application.add_handler(CommandHandler("aon", activate_other_session))
+    application.add_handler(CommandHandler("aoff", deactivate_other_session))
+    application.add_handler(CommandHandler("get_list", get_user_sessions))
 
     # Добавляем новые команды /info и /guide
     application.add_handler(CommandHandler("info", info))
